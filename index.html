@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Góc nhỏ của tôi</title>
+<link rel="preconnect" href="https://ujieemorixywrgvqiymd.supabase.co" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="modulepreload" href="assets/js/db.js">
+<link rel="modulepreload" href="assets/js/util.js">
+<link rel="modulepreload" href="assets/js/config.js">
+<!-- Font: Cormorant Garamond (tiêu đề), Libre Baskerville + Noto Serif (nội dung, Noto Serif có đủ chữ Việt), Be Vietnam Pro (nút, nhãn) -->
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Libre+Baskerville:wght@400;700&family=Noto+Serif:wght@400;600&family=Be+Vietnam+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/style.css">
+<script>/* áp dụng giao diện sáng/tối đã chọn trước khi vẽ trang, tránh nháy màu */
+try{var t=localStorage.getItem('zw:theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body>
+<a class="skip" href="#page">Bỏ qua điều hướng</a>
+<header class="top">
+  <a class="logo" href="#/" id="logo" aria-label="Trang chủ"><b id="logo-i"></b><span>Góc nhỏ của tôi</span></a>
+  <nav aria-label="Chính"><a href="#/sp">Phần mềm</a><a href="#/truyen">Truyện dịch</a></nav>
+  <button class="iconbtn" id="theme" type="button" aria-label="Đổi giao diện sáng/tối"></button>
+</header>
+<main id="page"><div class="empty">Đang tải…</div></main>
+<dialog id="dlg" aria-label="Chi tiết"></dialog>
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>

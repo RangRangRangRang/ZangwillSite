@@ -1,0 +1,241 @@
+// Trang công khai (chỉ đọc): một trang cuộn gồm Banner → Phần mềm → Truyện dịch.
+// Bấm vào một mục sẽ mở cửa sổ chi tiết (địa chỉ #/sp/<id> hoặc #/truyen/<id>, mở thẳng được).
+import { getProducts, getProduct, getNovels, getNovel, getSettings, onData } from './db.js';
+import { esc, safe, imgList } from './util.js';
+import { CONTACTS } from './config.js';
+import './applink.js'; // bấm link liên hệ thì mở thẳng app (Zalo, Facebook…)
+
+const $ = s => document.querySelector(s);
+
+/* ===== Hàm an toàn (chống XSS): esc, safe nằm trong util.js ===== */
+// URL dùng trong CSS url('...'): chỉ http(s) và mã hóa ký tự nguy hiểm
+const cssUrl = u => safe(u).replace(/['"()\\\s]/g, c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'));
+
+const vnd = n => Number(n || 0).toLocaleString('vi-VN') + 'đ';
+const hues = [250, 200, 160, 20, 330, 45];
+const hueOf = name => hues[((name || '?').charCodeAt(0) + (name || '?').length) % hues.length];
+const grad = h => `linear-gradient(135deg,hsl(${h} 62% 46%),hsl(${(h + 45) % 360} 60% 30%))`;
+const CATS = ['Windows Apps', 'Mac Apps', 'Linux Apps', 'Mobile Apps', 'Web Apps', 'Chrome Extensions', 'Firefox Add-ons', 'Edge Add-ons', 'Plugins', 'Games', 'Công cụ', 'Scripts', 'Khác'];
+
+/* ===== Biểu tượng (SVG, không dùng emoji) ===== */
+const ICONS = {
+    dl: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+    ext: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+    code: '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
+    book: '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+    prev: '<path d="m15 18-6-6 6-6"/>', next: '<path d="m9 18 6-6-6-6"/>',
+    calc: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01"/>',
+    chat: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    fb: '<path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>',
+    yt: '<path d="M2.5 17a24.1 24.1 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.6 49.6 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.1 24.1 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.6 49.6 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/>',
+    music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+    ig: '<rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.4a4 4 0 1 1-7.4 1.2 4 4 0 0 1 7.4-1.2"/><path d="M17.5 6.5h.01"/>',
+    news: '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8z"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
+};
+const ic = k => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
+
+/* ===== Thành phần dùng chung ===== */
+const firstImg = p => imgList(p).filter(u => safe(u) !== '#')[0] || '';
+// Ảnh bìa phần mềm = ảnh đầu tiên; chưa có ảnh thì dùng ô màu theo chữ cái đầu
+const thumb = p => {
+    const u = firstImg(p);
+    return u ? `<img src="${esc(safe(u))}" alt="" loading="lazy">`
+        : `<span class="ph" style="background:${grad(hueOf(p.name))}">${esc((p.name || '?')[0])}</span>`;
+};
+const iconOf = p => /^https?:/i.test(p.icon || '') ? `<img src="${esc(safe(p.icon))}" alt="">` : esc(p.icon || (p.name || '?')[0]);
+const cover = n => {
+    const u = n.cover && safe(n.cover) !== '#' ? n.cover : '';
+    return u ? `<div class="cover has" style="background-image:url('${cssUrl(u)}')" role="img" aria-label="${esc(n.title)}"></div>`
+        : `<div class="cover" style="background:${grad(hueOf(n.title))}"><span>${esc(n.title)}</span></div>`;
+};
+const totalCh = n => (n.volumes || []).reduce((m, v) => Math.max(m, v.to), 0);
+const stTag = s => s === 'done' ? '<span class="tag ok"><i></i>Đã kết thúc</span>' : '<span class="tag warn"><i></i>Đang tiếp tục</span>';
+const contacts = () => CONTACTS.filter(c => c.url);
+const contactIcon = name => ({ facebook: 'fb', tiktok: 'music', youtube: 'yt', instagram: 'ig' }[String(name).toLowerCase()] || 'chat');
+
+// Nhận diện nền tảng từ link review
+function platform(u) {
+    let h = '';
+    try { h = new URL(u).hostname.replace(/^www\./, ''); } catch (e) {}
+    if (/facebook|fb\.com|fb\.watch/.test(h)) return ['fb', 'Facebook'];
+    if (/tiktok/.test(h)) return ['music', 'TikTok'];
+    if (/youtube|youtu\.be/.test(h)) return ['yt', 'YouTube'];
+    if (/instagram/.test(h)) return ['ig', 'Instagram'];
+    return ['news', h || 'Báo / Website'];
+}
+
+/* ===== Dữ liệu ===== */
+let DATA = { products: [], novels: [], site: {} };
+let curCat = 'all';
+async function load() {
+    const [products, novels, site] = await Promise.all([getProducts(), getNovels(), getSettings().catch(() => ({}))]);
+    DATA = { products, novels, site: site || {} };
+}
+
+/* ===== Trang chính ===== */
+const pCard = p => `<a class="pcard" href="#/sp/${esc(p.id)}"><div class="thumb" aria-hidden="true">${thumb(p)}<span class="em">${iconOf(p)}</span></div>
+  <h3>${esc(p.name)}</h3><p>${esc(p.short)}</p><div class="pm"><span class="tag">${esc(p.cat)}</span>${p.version ? `<span class="ver">v${esc(p.version)}</span>` : ''}</div></a>`;
+const nCard = n => `<a class="tile" href="#/truyen/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${totalCh(n) ? totalCh(n) + ' chương' : 'Đang cập nhật'} · ${vnd(n.price)}/chương</small></a>`;
+
+function renderProducts() {
+    const { products } = DATA;
+    const cats = [...new Set([...CATS, ...products.map(p => p.cat)])].filter(c => products.some(p => p.cat === c));
+    if (curCat !== 'all' && !cats.includes(curCat)) curCat = 'all';
+    const list = curCat === 'all' ? products : products.filter(p => p.cat === curCat);
+    $('#filters').innerHTML = cats.length > 1
+        ? [['all', 'Tất cả'], ...cats.map(c => [c, c])].map(([k, l]) => `<button class="chip" data-cat="${esc(k)}" aria-pressed="${curCat === k}">${esc(l)}</button>`).join('') : '';
+    $('#pgrid').innerHTML = list.map(pCard).join('') || '<div class="empty">Chưa có sản phẩm nào.</div>';
+}
+
+function renderPage() {
+    const { products, novels, site } = DATA;
+    const name = esc(site.name || '[Tên bạn]');
+    const tagline = esc(site.tagline || 'Một thư viện nhỏ: những sản phẩm mình tự làm, và những bộ truyện mình dịch — liên hệ để mua trực tiếp.');
+    const bg = site.banner && safe(site.banner) !== '#' ? site.banner : '';
+    const p0 = products[0];
+    const art = `<div class="art" aria-hidden="true">
+      ${p0 ? `<div class="win"><div class="wh"><i></i><i></i><i></i></div><div class="wb" style="background:${grad(hueOf(p0.name))}">${firstImg(p0) ? `<img src="${esc(safe(firstImg(p0)))}" alt="">` : esc(p0.name)}</div></div>` : ''}
+      ${novels.slice(0, 3).map((n, i) => `<div class="bk b${i + 1}">${cover(n)}</div>`).join('')}</div>`;
+    const links = contacts().map(c => `<a href="${esc(safe(c.url))}" data-app target="_blank" rel="noopener">${esc(c.name)}</a>`).join(' · ');
+    $('#page').innerHTML = `<section class="ban ${rendered ? '' : 'view'} ${bg ? 'has-img' : ''}">${bg ? `<div class="ban-bg" style="background-image:url('${cssUrl(bg)}')"></div>` : ''}
+      <div class="ban-in"><div><p class="eyebrow">Xin chào</p><h1>Mình là ${name},<br>làm phần mềm &amp; dịch truyện.</h1><p class="lead">${tagline}</p>
+       <div class="btns"><a class="btn sw" href="#/sp">${ic('code')}Phần mềm</a><a class="btn" href="#/truyen">${ic('book')}Truyện dịch</a></div>
+       <div class="chips"><a href="#/sp"><b>${products.length}</b>phần mềm</a><a href="#/truyen"><b>${novels.length}</b>truyện dịch</a></div></div>${art}</div></section>
+     <div class="wrap ${rendered ? '' : 'view'}">
+     <section class="shelf" id="sp" style="margin-top:0"><div class="sh"><h2>Phần mềm</h2><div class="filters" id="filters" role="group" aria-label="Lọc theo danh mục"></div></div><div class="pgrid" id="pgrid"></div></section>
+     <section class="shelf" id="truyen"><div class="sh"><h2>Truyện dịch</h2></div>
+      ${novels.length ? `<div class="ngrid">${novels.map(nCard).join('')}</div>` : '<div class="empty">Chưa có truyện nào.</div>'}</section>
+     <footer>${links ? `Liên hệ mua truyện: ${links} · ` : ''}<a href="admin.html">Quản trị</a></footer></div>`;
+    renderProducts();
+}
+
+// Bấm nút chọn danh mục (dùng data-cat thay vì onclick để an toàn)
+document.addEventListener('click', e => {
+    const b = e.target.closest('[data-cat]');
+    if (b) { curCat = b.dataset.cat; renderProducts(); }
+});
+
+/* ===== Cửa sổ chi tiết ===== */
+const dlg = $('#dlg');
+
+// Thư viện ảnh: lướt ngang (vuốt) hoặc bấm mũi tên, có ảnh thu nhỏ bên dưới
+function gallery(p) {
+    const imgs = imgList(p).filter(u => safe(u) !== '#');
+    if (!imgs.length) return `<div class="gal"><div class="gmain"><div class="gone" style="background:${grad(hueOf(p.name))}">${esc((p.name || '?')[0])}</div></div></div>`;
+    const many = imgs.length > 1;
+    return `<div class="gal"><div class="gmain"><div class="gtrack">${imgs.map(u => `<img src="${esc(safe(u))}" alt="${esc(p.name)}" draggable="false">`).join('')}</div>
+     ${many ? `<button type="button" class="gnav prev" aria-label="Ảnh trước">${ic('prev')}</button><button type="button" class="gnav next" aria-label="Ảnh sau">${ic('next')}</button><span class="gcount"></span>` : ''}</div>
+     ${many ? `<div class="gthumbs">${imgs.map((u, i) => `<button type="button" data-go="${i}" aria-label="Ảnh ${i + 1}"><img src="${esc(safe(u))}" alt=""></button>`).join('')}</div>` : ''}</div>`;
+}
+function initGallery() {
+    const t = dlg.querySelector('.gtrack'); if (!t || t.children.length < 2) return;
+    const n = t.children.length, thumbs = [...dlg.querySelectorAll('.gthumbs button')];
+    const go = i => t.scrollTo({ left: ((i + n) % n) * t.clientWidth, behavior: 'smooth' });
+    const cur = () => Math.round(t.scrollLeft / t.clientWidth);
+    const sync = () => {
+        const i = cur(); dlg.querySelector('.gcount').textContent = `${i + 1}/${n}`;
+        thumbs.forEach((b, k) => b.classList.toggle('on', k === i));
+        thumbs[i]?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    };
+    t.addEventListener('scroll', sync, { passive: true });
+    dlg.querySelector('.gnav.prev').onclick = () => go(cur() - 1);
+    dlg.querySelector('.gnav.next').onclick = () => go(cur() + 1);
+    thumbs.forEach(b => b.onclick = () => go(+b.dataset.go));
+    sync();
+}
+
+function productHtml(p) {
+    return `<div class="dh2"><div class="ico">${iconOf(p)}</div><div><span class="tag">${esc(p.cat)}</span><h1 id="dt">${esc(p.name)}</h1>
+      ${p.version ? `<div class="meta" style="margin:0">Phiên bản: <b>${esc(p.version)}</b></div>` : ''}</div></div>
+     <div class="dgrid">${gallery(p)}<div><div class="desc">${esc(p.short)}</div><div style="margin-top:18px"><b>Tải về / Truy cập</b></div>
+      <div class="btns">${(p.links || []).map(l => `<a class="btn sw" href="${esc(safe(l.url))}" target="_blank" rel="noopener">${ic('dl')}${esc(l.label || 'Tải xuống')}</a>`).join('') || '<span class="meta">Chưa có link tải</span>'}</div></div></div>
+     <h3 class="h">Giới thiệu</h3><div class="desc">${esc(p.desc)}</div>`;
+}
+
+function novelHtml(n) {
+    const max = totalCh(n), vols = n.volumes || [];
+    const reviews = (n.reviews || []).map(x => {
+        const [i, nm] = platform(x.url);
+        return `<a class="rv" href="${esc(safe(x.url))}" target="_blank" rel="noopener"><span class="pi">${ic(i)}</span><div><b>${esc(x.label || nm)}</b><small>${esc(nm)}</small></div><span class="go">${ic('ext')}</span></a>`;
+    }).join('');
+    return `<div class="dh2">${cover(n)}<div>${stTag(n.status)}<h1 id="dt">${esc(n.title)}</h1></div></div>
+     <div class="meta"><span>Tác giả: <b>${esc(n.author || '—')}</b></span><span>${max ? max + ' chương' : 'Đang cập nhật số chương'}</span><span><b>${vnd(n.price)}</b>/chương</span></div>
+     <div class="desc">${esc(n.synopsis)}</div>
+     ${vols.length ? `<h3 class="h">Danh sách quyển</h3><div class="vols"><div class="vrow th"><span>Quyển</span><span>Chương</span><span>Số chương</span><span>Giá trọn quyển</span></div>
+      ${vols.map(v => `<div class="vrow"><b>${esc(v.name)}${v.title ? ' – ' + esc(v.title) : ''}</b><span>${v.from} – ${v.to}</span><span>${v.to - v.from + 1} chương</span><span>${vnd((v.to - v.from + 1) * n.price)}</span></div>`).join('')}</div>` : ''}
+     ${max ? `<div class="calc"><h4>${ic('calc')}Tính giá theo chương</h4><div class="in"><label>Từ chương <input type="number" id="c1" min="1" max="${max}" value="1"></label><label>đến <input type="number" id="c2" min="1" max="${max}" value="${max}"></label></div><div class="total" id="tot"></div></div>` : ''}
+     ${contacts().length ? `<h3 class="h" style="margin-top:0">Liên hệ mua</h3><div class="btns" style="margin-top:0">${contacts().map(c => `<a class="btn nv" href="${esc(safe(c.url))}" data-app target="_blank" rel="noopener">${ic(contactIcon(c.name))}${esc(c.name)}</a>`).join('')}</div>` : ''}
+     ${reviews ? `<h3 class="h">Review &amp; đánh giá</h3>${reviews}` : ''}`;
+}
+
+function initCalc(n) {
+    const c1 = $('#c1'), c2 = $('#c2'); if (!c1) return;
+    const calc = () => {
+        let a = +c1.value || 1, b = +c2.value || 1;
+        if (a > b) [a, b] = [b, a];
+        const k = b - a + 1;
+        $('#tot').innerHTML = `${vnd(k * n.price)}<small>${k} chương · chương ${a} → ${b}</small>`;
+    };
+    c1.oninput = c2.oninput = calc;
+    calc();
+}
+
+async function openDetail(sec, id) {
+    const item = (sec === 'sp' ? DATA.products : DATA.novels).find(x => x.id === id)
+        || await (sec === 'sp' ? getProduct(id) : getNovel(id)).catch(() => null);
+    if (!item) return closeDetail(true);
+    dlg.innerHTML = `<button class="xbtn" id="x" type="button" aria-label="Đóng">${ic('x')}</button><div class="dc">${sec === 'sp' ? productHtml(item) : novelHtml(item)}</div>`;
+    dlg.setAttribute('aria-labelledby', 'dt');
+    if (!dlg.open) dlg.showModal();
+    dlg.scrollTop = 0;
+    $('#x').onclick = () => dlg.close();
+    sec === 'sp' ? initGallery() : initCalc(item);
+}
+function closeDetail(clearHash) {
+    if (dlg.open) dlg.close();
+    if (clearHash) history.replaceState(null, '', location.pathname + location.search);
+}
+// Đóng bằng nút, phím Esc hoặc bấm ra ngoài → bỏ phần #/sp/<id> khỏi địa chỉ
+dlg.addEventListener('close', () => { if (/^#\/(sp|truyen)\/./.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); });
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+
+/* ===== Định tuyến theo địa chỉ ===== */
+let rendered = false;
+async function route() {
+    if (!rendered) {
+        try { await load(); } catch (e) {
+            console.error(e);
+            $('#page').innerHTML = `<div class="wrap"><div class="err"><b>Không tải được dữ liệu.</b><br>${esc(e.message)}<br><small>Kiểm tra lại cấu hình trong assets/js/config.js và kết nối mạng.</small></div></div>`;
+            return;
+        }
+        renderPage(); rendered = true;
+    }
+    const m = location.hash.match(/^#\/(sp|truyen)\/(.+)$/);
+    if (m) return openDetail(m[1], decodeURIComponent(m[2]));
+    closeDetail(false);
+    const s = location.hash.match(/^#\/(sp|truyen)$/);   // liên kết cũ #/sp, #/truyen → cuộn tới mục
+    if (s) document.getElementById(s[1])?.scrollIntoView({ behavior: 'smooth' });
+}
+addEventListener('hashchange', route);
+$('#logo').addEventListener('click', () => scrollTo({ top: 0, behavior: 'smooth' }));
+onData(async () => { try { await load(); renderPage(); } catch (e) { console.error(e); } }); // có dữ liệu mới ở nền → vẽ lại
+
+/* ===== Nút đổi sáng/tối (mặc định theo hệ thống) ===== */
+$('#logo-i').innerHTML = ic('spark');
+const tb = $('#theme'), mq = matchMedia('(prefers-color-scheme:dark)');
+const isDark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : mq.matches;
+const paintTheme = () => { tb.innerHTML = ic(isDark() ? 'sun' : 'moon'); };
+tb.onclick = () => {
+    const t = isDark() ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('zw:theme', t); } catch (e) {}
+    paintTheme();
+};
+mq.addEventListener('change', paintTheme);
+paintTheme();
+
+route();
