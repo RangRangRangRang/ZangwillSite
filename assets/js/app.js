@@ -153,8 +153,11 @@ function productHtml(p) {
       ${p.version ? `<div class="meta" style="margin:0">Phiên bản: <b>${esc(p.version)}</b></div>` : ''}</div></div>
      <div class="dgrid">${gallery(p)}<div><div class="desc">${esc(p.short)}</div><div style="margin-top:18px"><b>Tải về / Truy cập</b></div>
       <div class="btns">${(p.links || []).map(l => `<a class="btn sw" href="${esc(safe(l.url))}" target="_blank" rel="noopener">${ic('dl')}${esc(l.label || 'Tải xuống')}</a>`).join('') || '<span class="meta">Chưa có link tải</span>'}</div></div></div>
-     <h3 class="h">Giới thiệu</h3><div class="desc">${esc(p.desc)}</div>`;
+     ${intro(p.desc)}`;
 }
+
+// Phần giới thiệu: một nút bấm mới mở ra (gọn hơn). Để trống thì không hiện nút.
+const intro = t => t && String(t).trim() ? `<details class="intro"><summary class="btn">Giới thiệu</summary><div class="desc">${esc(t)}</div></details>` : '';
 
 function novelHtml(n) {
     const max = totalCh(n), vols = n.volumes || [];
@@ -164,7 +167,7 @@ function novelHtml(n) {
     }).join('');
     return `<div class="dh2">${cover(n)}<div>${stTag(n.status)}<h1 id="dt">${esc(n.title)}</h1></div></div>
      <div class="meta"><span>Tác giả: <b>${esc(n.author || '—')}</b></span><span>${max ? max + ' chương' : 'Đang cập nhật số chương'}</span><span><b>${vnd(n.price)}</b>/chương</span></div>
-     <div class="desc">${esc(n.synopsis)}</div>
+     ${intro(n.synopsis)}
      ${vols.length ? `<h3 class="h">Danh sách quyển</h3><div class="vols"><div class="vrow th"><span>Quyển</span><span>Chương</span><span>Số chương</span><span>Giá trọn quyển</span></div>
       ${vols.map(v => `<div class="vrow"><b>${esc(v.name)}${v.title ? ' – ' + esc(v.title) : ''}</b><span>${v.from} – ${v.to}</span><span>${v.to - v.from + 1} chương</span><span>${vnd((v.to - v.from + 1) * n.price)}</span></div>`).join('')}</div>` : ''}
      ${max ? `<div class="calc"><h4>${ic('calc')}Tính giá theo chương</h4><div class="in"><label>Từ chương <input type="number" id="c1" min="1" max="${max}" value="1"></label><label>đến <input type="number" id="c2" min="1" max="${max}" value="${max}"></label></div><div class="total" id="tot"></div></div>` : ''}

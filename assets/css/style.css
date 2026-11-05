@@ -140,6 +140,13 @@ dialog[open]{animation:pop .3s ease}
 .meta{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--mut);font:14.5px var(--f-ui);margin:12px 0}
 .meta b{color:var(--ink)}
 .desc{white-space:pre-wrap}
+/* Nút "Giới thiệu": bấm để mở / đóng nội dung */
+.intro{margin:22px 0}
+.intro>summary{list-style:none;cursor:pointer;user-select:none}
+.intro>summary::-webkit-details-marker{display:none}
+.intro>summary::after{content:"▾";transition:transform .2s}
+.intro[open]>summary::after{transform:rotate(180deg)}
+.intro .desc{margin-top:14px}
 h3.h{font:600 26px/1.2 var(--f-serif);margin:30px 0 12px}
 .dgrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:30px;margin-top:6px}
 .dgrid b{font:600 14px var(--f-ui)}

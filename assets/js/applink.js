@@ -1,6 +1,6 @@
 // Bấm link liên hệ (Zalo, Facebook, Messenger, TikTok, YouTube, Instagram) thì ưu tiên mở thẳng APP.
 // Không có app / không mở được thì tự quay về mở link web như bình thường.
-// Áp dụng cho thẻ <a data-app>. Điện thoại: mở app. Máy tính: mở link web (trình duyệt không tự bật app được).
+// Áp dụng cho thẻ <a data-app>. Điện thoại: mở app. Máy tính: thử mở Zalo PC (zalo://); các link khác mở web.
 
 const UA = navigator.userAgent;
 const ANDROID = /Android/i.test(UA);
@@ -25,6 +25,29 @@ function iosScheme(u) {
     return '';
 }
 
+// Máy tính: chỉ Zalo PC có địa chỉ riêng zalo:// (Facebook, TikTok, YouTube, Instagram không có app máy tính để mở)
+function zaloScheme(u) {
+    if (hostOf(u) !== 'zalo.me') return '';
+    const id = u.pathname.split('/').filter(Boolean)[0];
+    if (!id) return '';
+    if (/^(0\d{9,10}|84\d{9,10})$/.test(id)) return 'zalo://qr/p/' + (id[0] === '0' ? '84' + id.slice(1) : id); // số điện thoại
+    return 'zalo://oa/' + encodeURIComponent(id); // trang Official Account
+}
+
+// Gọi zalo://… rồi chờ: nếu trình duyệt chuyển sang Zalo (cửa sổ mất focus) thì xong,
+// còn không (chưa cài Zalo PC / bị chặn) thì sau 1,5 giây mở link web.
+function openDesktopApp(scheme, webUrl) {
+    let left = false;
+    const onBlur = () => { left = true; };
+    window.addEventListener('blur', onBlur);
+    location.href = scheme;
+    setTimeout(() => {
+        window.removeEventListener('blur', onBlur);
+        if (left || document.hidden) return;
+        if (!window.open(webUrl, '_blank', 'noopener')) location.href = webUrl;
+    }, 1500);
+}
+
 document.addEventListener('click', e => {
     const a = e.target.closest('a[data-app]');
     if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button) return;
@@ -44,6 +67,10 @@ document.addEventListener('click', e => {
         location.href = scheme;
         // Sau 1,2 giây trang vẫn còn hiển thị = app không mở được → mở link web
         setTimeout(() => { if (!document.hidden) location.href = u.href; }, 1200);
+    } else {
+        const scheme = zaloScheme(u);
+        if (!scheme) return; // link khác: mở web như bình thường (tab mới)
+        e.preventDefault();
+        openDesktopApp(scheme, u.href);
     }
-    // Máy tính: để trình duyệt mở link web như bình thường (tab mới)
 });
