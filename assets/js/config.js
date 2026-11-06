@@ -16,3 +16,7 @@ export const CONTACTS = [
     { name: 'YouTube',   url: '' },
     { name: 'Instagram', url: '' },
 ];
+
+// Giảm giá combo đồng tác giả: trong giỏ có từ `min` truyện CÙNG tác giả trở lên thì giảm `pct`% trên tổng giá các truyện đó.
+// Đặt pct: 0 để tắt.
+export const COMBO = { min: 2, pct: 10 };
