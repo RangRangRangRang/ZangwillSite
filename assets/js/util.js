@@ -16,5 +16,13 @@ export const parseLinks = t => String(t || '').split('\n').map(s => s.trim()).fi
 export const linksToText = arr => (arr || []).map(l => l.label ? l.label + '|' + l.url : l.url).join('\n');
 
 
+// Giá mua toàn tập so với mua lẻ: retail = giá lẻ cả bộ; pct = % rẻ hơn (null nếu chưa tính được, 0 nếu không rẻ hơn)
+export function fullDeal(price, chapters, full) {
+  const retail = (Number(price) || 0) * (Number(chapters) || 0);
+  if (!(full > 0) || !(retail > 0)) return { retail, pct: null };
+  const pct = Math.round((1 - full / retail) * 100);
+  return { retail, pct: full < retail && pct > 0 ? pct : 0 };
+}
+
 // Danh sách ảnh của sản phẩm: ưu tiên cột images, nếu chưa có thì dùng ảnh cũ (img)
 export const imgList = p => (Array.isArray(p.images) && p.images.length ? p.images : (p.img ? [p.img] : [])).filter(Boolean);

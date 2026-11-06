@@ -6,11 +6,12 @@ const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js
 export const DEFAULT_PRICE = 100; // đ / chương, dùng khi ô giá để trống
 
 // Các cột của file Excel (dòng đầu tiên là tiêu đề)
-export const COLS = ['Tên truyện', 'Tác giả', 'Trạng thái', 'Giới thiệu', 'Giá mỗi chương', 'Ảnh bìa', 'Tổng số chương', 'Các quyển', 'Review'];
+export const COLS = ['Tên truyện', 'Tác giả', 'Trạng thái', 'Giới thiệu', 'Giá mỗi chương', 'Ảnh bìa', 'Tổng số chương', 'Các quyển', 'Review', 'Giá toàn tập'];
 
 // Nhận diện cột theo từ khóa có trong tiêu đề (đã bỏ dấu, viết thường). Thứ tự kiểm tra quan trọng:
 // "tác giả" và "đánh giá" đều chứa chữ "gia" nên phải kiểm tra trước cột giá.
 const RULES = [
+    ['fullPrice', ['gia toan tap', 'gia tron bo', 'toan tap', 'tron bo']], // phải đứng trước cột giá thường
     ['author', ['tac gia', 'author', 'nguoi viet']],
     ['status', ['trang thai', 'tinh trang', 'status']],
     ['synopsis', ['gioi thieu', 'noi dung', 'mo ta', 'tom tat', 'synopsis']],
@@ -80,6 +81,10 @@ export function parseNovelRows(rows) {
             const p = parseInt(r.price.replace(/[^\d]/g, ''), 10);
             isNaN(p) ? warn('giá không phải số, dùng giá mặc định') : item.price = p;
         }
+        if (r.fullPrice) {
+            const p = parseInt(r.fullPrice.replace(/[^\d]/g, ''), 10);
+            isNaN(p) ? warn('giá toàn tập không phải số, đã bỏ qua') : item.full_price = p;
+        }
         if (r.volumes) {
             try { item.volumes = parseVolumes(r.volumes); } catch (e) { warn(e.message); }
         }
@@ -108,9 +113,9 @@ export async function readNovelFile(file) {
 export async function downloadTemplate() {
     const X = await loadXlsx();
     const ws = X.utils.aoa_to_sheet([COLS,
-        ['Tên bộ truyện A', 'Tên tác giả', 'Đang tiếp tục', 'Nội dung giới thiệu…', 100, 'https://…/bia.jpg', 300, '', 'Facebook|https://facebook.com/…'],
-        ['Tên bộ truyện B', 'Tác giả B', 'Đã kết thúc', 'Giới thiệu…', '', '', '', 'Mở đầu|1|100\nPhần hai|101|250', '']]);
-    ws['!cols'] = [28, 18, 16, 40, 14, 28, 16, 28, 36].map(w => ({ wch: w }));
+        ['Tên bộ truyện A', 'Tên tác giả', 'Đang tiếp tục', 'Nội dung giới thiệu…', 100, 'https://…/bia.jpg', 300, '', 'Facebook|https://facebook.com/…', 25000],
+        ['Tên bộ truyện B', 'Tác giả B', 'Đã kết thúc', 'Giới thiệu…', '', '', '', 'Mở đầu|1|100\nPhần hai|101|250', '', '']]);
+    ws['!cols'] = [28, 18, 16, 40, 14, 28, 16, 28, 36, 16].map(w => ({ wch: w }));
     const wb = X.utils.book_new();
     X.utils.book_append_sheet(wb, ws, 'Truyen');
     X.writeFile(wb, 'mau-nhap-truyen.xlsx');

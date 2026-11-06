@@ -46,7 +46,9 @@ export async function getSettings() {
     const r = rows.find(x => x.key === 'site');
     return (r && r.value) || {};
 }
-export const getNovels = () => list('novels');
+// Truyện sắp theo sort_order (admin kéo thả), bằng nhau thì theo ngày tạo
+const byOrder = (a, b) => (a.sort_order || 0) - (b.sort_order || 0) || String(a.created_at).localeCompare(String(b.created_at));
+export const getNovels = async () => (await list('novels')).slice().sort(byOrder);
 export async function getProduct(id) {
     return (await getProducts()).find(x => x.id === id) || (await rget(`products?select=*&id=eq.${encodeURIComponent(id)}`))[0] || null;
 }
@@ -101,7 +103,22 @@ export async function saveSettings(value) {
 }
 export const saveProduct = p => save('products', p);
 export const deleteProduct = id => remove('products', id);
-export const saveNovel = n => save('novels', n);
+// Truyện mới thêm vào CUỐI danh sách (sort_order lớn nhất + 1). Chưa có cột sort_order thì bỏ qua.
+export async function saveNovel(n) {
+    if (!n.id && n.sort_order === undefined) {
+        try {
+            const r = check(await sb.from('novels').select('sort_order').order('sort_order', { ascending: false }).limit(1));
+            n = { ...n, sort_order: ((r[0] && r[0].sort_order) || 0) + 1 };
+        } catch (e) { /* chưa chạy update_v4.sql: lưu như cũ */ }
+    }
+    return save('novels', n);
+}
+// Lưu thứ tự mới: truyện đầu mảng ids hiện đầu tiên ở trang chủ
+export async function reorderNovels(ids) {
+    const { error } = await sb.rpc('reorder_novels', { ids });
+    if (error) throw new Error(/reorder_novels|schema cache|sort_order/i.test(error.message)
+        ? 'Chưa cập nhật database. Hãy chạy file supabase/update_v4.sql trong SQL Editor rồi thử lại.' : error.message);
+}
 export const deleteNovel = id => remove('novels', id);
 
 /* ===== Tải ảnh lên Storage (bucket "images", chỉ admin) ===== */

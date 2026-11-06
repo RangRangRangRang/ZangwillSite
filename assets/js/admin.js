@@ -1,14 +1,17 @@
 // Trang quản trị: đăng nhập mật khẩu + thêm/sửa/xóa Phần mềm và Truyện dịch.
 import {
     getProducts, getNovels, saveProduct, deleteProduct, saveNovel, deleteNovel,
-    sendOtp, signInPassword, getSession, signOut, sb, uploadImage, uploadFile, getSettings, saveSettings, settingsHint,
+    sendOtp, signInPassword, getSession, signOut, sb, uploadImage, uploadFile, getSettings, saveSettings, settingsHint, reorderNovels,
 } from './db.js';
-import { esc, safe, parseLinks, linksToText, imgList } from './util.js';
+import { esc, safe, parseLinks, linksToText, imgList, fullDeal } from './util.js';
 import { readNovelFile, downloadTemplate, titleKey, DEFAULT_PRICE } from './import.js';
 
 const $ = s => document.querySelector(s);
 const CATS = ['Windows Apps', 'Mac Apps', 'Linux Apps', 'Mobile Apps', 'Web Apps', 'Chrome Extensions', 'Firefox Add-ons', 'Edge Add-ons', 'Plugins', 'Games', 'Công cụ', 'Scripts', 'Khác'];
 let tab = 'products'; // 'products' | 'novels' | 'site'
+let adminQuery = '', queryTab = ''; // ô tìm kiếm trong danh sách quản trị
+// Bỏ dấu + viết thường để gõ "tu tien" vẫn tìm ra "Tu Tiên"
+const fold = t => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
 
 /* ===== Thông báo ===== */
 // Hiện ở đầu trang, và cả trong form nếu form đang mở (tránh bị che sau lớp nền)
@@ -22,7 +25,11 @@ function say(text, isErr = false) {
 // Chạy một thao tác, báo lỗi dễ hiểu nếu thất bại
 async function run(fn) {
     try { say(''); await fn(); }
-    catch (e) { console.error(e); say('Lỗi: ' + e.message, true); }
+    catch (e) {
+        console.error(e);
+        const hint = /full_price|sort_order/.test(e.message) ? ' — Hãy chạy file supabase/update_v4.sql trong SQL Editor rồi thử lại.' : '';
+        say('Lỗi: ' + e.message + hint, true);
+    }
 }
 
 /* ===== Đăng nhập ===== */
@@ -89,19 +96,80 @@ async function sitePage() {
 async function panel() {
     $('#logout').hidden = false;
     if (tab === 'site') return sitePage();
+    if (queryTab !== tab) { adminQuery = ''; queryTab = tab; } // đổi tab thì xóa ô tìm
     $('#app').innerHTML = `${tabsHtml()}
     <div class="top"><h1>${tab === 'products' ? 'Phần mềm' : 'Truyện dịch'}</h1>
     <div class="row" style="margin:0">${tab === 'novels' ? '<button class="btn" data-act="tpl">⬇ File Excel mẫu</button><button class="btn" data-act="import">📥 Nhập từ Excel</button>' : ''}
     <button class="btn p" data-act="add">+ Thêm mới</button></div></div>
-    <input type="file" id="xfile" accept=".xlsx,.xls,.csv" hidden><div id="list"><div class="empty">Đang tải…</div></div>`;
-    const items = tab === 'products' ? await getProducts() : await getNovels();
-    $('#list').innerHTML = items.length
-        ? items.map(o => `<div class="rv" style="cursor:default"><div style="flex:1"><b>${esc(o.name || o.title)}</b>
-        <small>${esc(tab === 'products' ? o.cat : (o.status === 'done' ? 'Đã kết thúc' : 'Đang tiếp tục'))}</small></div>
-        <button class="btn" data-act="edit" data-id="${esc(o.id)}">Sửa</button>
-        <button class="btn d" data-act="del" data-id="${esc(o.id)}">Xóa</button></div>`).join('')
-        : '<div class="empty">Chưa có mục nào.</div>';
-    window.__items = items; // để form sửa lấy dữ liệu
+    <input type="file" id="xfile" accept=".xlsx,.xls,.csv" hidden>
+    <input type="search" id="aq" placeholder="${tab === 'products' ? 'Tìm theo tên hoặc danh mục…' : 'Tìm theo tên truyện hoặc tác giả…'}" value="${esc(adminQuery)}" aria-label="Tìm trong danh sách" autocomplete="off" style="margin:0 0 14px">
+    <div id="list"><div class="empty">Đang tải…</div></div>`;
+    window.__items = tab === 'products' ? await getProducts() : await getNovels();
+    drawList();
+    if (tab === 'novels') enableDnD();
+}
+
+const rowBtns = o => `<button class="btn" data-act="edit" data-id="${esc(o.id)}">Sửa</button><button class="btn d" data-act="del" data-id="${esc(o.id)}">Xóa</button>`;
+function rowHtml(o, i, n, locked) {
+    if (tab === 'products') return `<div class="rv" style="cursor:default"><div style="flex:1"><b>${esc(o.name)}</b><small>${esc(o.cat)}</small></div>${rowBtns(o)}</div>`;
+    // Truyện: có tay nắm kéo thả + nút đưa lên đầu / lên / xuống (dùng được cả trên điện thoại)
+    return `<div class="rv nrow" data-id="${esc(o.id)}" style="cursor:default">${locked ? '' : '<span class="grip" title="Kéo để sắp xếp" aria-hidden="true">⠿</span>'}<span class="pos">${i + 1}</span>
+    <div style="flex:1;min-width:0"><b>${esc(o.title)}</b><small>${o.status === 'done' ? 'Đã kết thúc' : 'Đang tiếp tục'}</small></div>
+    <button class="btn mv" data-act="top" data-id="${esc(o.id)}" title="Đưa lên đầu trang chủ" ${locked || i === 0 ? 'disabled' : ''}>⤒ Lên đầu</button>
+    <button class="btn mv" data-act="up" data-id="${esc(o.id)}" aria-label="Lên một bậc" ${locked || i === 0 ? 'disabled' : ''}>↑</button>
+    <button class="btn mv" data-act="down" data-id="${esc(o.id)}" aria-label="Xuống một bậc" ${locked || i === n - 1 ? 'disabled' : ''}>↓</button>${rowBtns(o)}</div>`;
+}
+function drawList() {
+    const items = window.__items, q = fold(adminQuery).trim();
+    // Giữ số thứ tự thật trong toàn danh sách, kể cả khi đang lọc
+    const rows = items.map((o, i) => ({ o, i })).filter(({ o }) => !q || fold(tab === 'products' ? `${o.name} ${o.cat}` : `${o.title} ${o.author || ''}`).includes(q));
+    const hint = q && tab === 'novels' ? '<div class="meta" style="margin-bottom:10px">Đang lọc — xóa ô tìm kiếm để kéo thả / sắp xếp thứ tự.</div>' : '';
+    $('#list').innerHTML = !items.length ? '<div class="empty">Chưa có mục nào.</div>'
+        : !rows.length ? '<div class="empty">Không tìm thấy mục nào.</div>'
+        : hint + rows.map(({ o, i }) => rowHtml(o, i, items.length, !!q)).join('');
+}
+
+/* ===== Sắp xếp truyện: kéo thả hoặc bấm nút. Truyện đứng đầu danh sách = đầu tiên ở trang chủ ===== */
+function persistOrder() {
+    const ids = window.__items.map(x => x.id);
+    run(async () => {
+        try { await reorderNovels(ids); } catch (e) { await panel(); throw e; } // lỗi → tải lại thứ tự thật trong database
+        say('Đã lưu thứ tự — trang chủ sẽ hiển thị theo thứ tự này.');
+    });
+}
+function moveNovel(id, how) {
+    const a = window.__items, i = a.findIndex(x => x.id === id);
+    const j = how === 'top' ? 0 : how === 'up' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= a.length || j === i) return;
+    a.splice(j, 0, a.splice(i, 1)[0]);
+    drawList(); persistOrder();
+    if (how === 'top') $('#list').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function enableDnD() {
+    const L = $('#list'); let drag = null;
+    // Chỉ bắt đầu kéo khi bấm vào tay nắm ⠿ (để các nút khác vẫn bấm bình thường)
+    L.addEventListener('mousedown', e => { const g = e.target.closest('.grip'); if (g) g.closest('.nrow').draggable = true; });
+    L.addEventListener('dragstart', e => {
+        drag = e.target.closest && e.target.closest('.nrow'); if (!drag) return;
+        e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', drag.dataset.id);
+        drag.classList.add('dragging');
+    });
+    L.addEventListener('dragover', e => {
+        if (!drag) return; e.preventDefault();
+        if (e.clientY < 90) scrollBy(0, -14); else if (e.clientY > innerHeight - 90) scrollBy(0, 14); // kéo sát mép thì tự cuộn
+        const after = [...L.querySelectorAll('.nrow:not(.dragging)')].find(r => { const b = r.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; });
+        after ? L.insertBefore(drag, after) : L.appendChild(drag);
+    });
+    L.addEventListener('dragend', () => {
+        if (!drag) return;
+        drag.classList.remove('dragging'); drag.draggable = false; drag = null;
+        const byId = new Map(window.__items.map(x => [x.id, x]));
+        const ids = [...L.querySelectorAll('.nrow')].map(r => r.dataset.id);
+        if (ids.every((id, i) => id === window.__items[i].id)) return; // không đổi chỗ
+        window.__items = ids.map(id => byId.get(id));
+        drawList(); persistOrder();
+    });
+    document.addEventListener('mouseup', () => L.querySelectorAll('.nrow[draggable=true]').forEach(r => r.draggable = false));
 }
 
 // Bấm tab / nút trong danh sách (dùng data-* thay vì onclick)
@@ -114,12 +182,16 @@ document.addEventListener('click', e => {
     const item = (window.__items || []).find(x => x.id === id);
     if (b.dataset.act === 'tpl') return run(downloadTemplate);
     if (b.dataset.act === 'import') return $('#xfile').click();
+    if (['top', 'up', 'down'].includes(b.dataset.act)) return moveNovel(id, b.dataset.act);
     if (b.dataset.act === 'add') tab === 'products' ? productPage() : novelForm();
     if (b.dataset.act === 'edit' && item) tab === 'products' ? productPage(item) : novelForm(item);
     if (b.dataset.act === 'del' && confirm('Xóa mục này? Không thể hoàn tác.')) {
         run(async () => { await (tab === 'products' ? deleteProduct(id) : deleteNovel(id)); await panel(); say('Đã xóa.'); });
     }
 });
+
+// Gõ vào ô tìm: chỉ vẽ lại danh sách (ô nhập không mất con trỏ)
+document.addEventListener('input', e => { if (e.target.id === 'aq') { adminQuery = e.target.value; drawList(); } });
 
 /* ===== Nhập truyện từ Excel ===== */
 // Chọn file → đọc → hiện bản xem trước (mới / cập nhật / lỗi) → bấm Nhập mới ghi vào database.
@@ -345,6 +417,8 @@ function novelForm(n = { title: '', author: '', synopsis: '', status: 'ongoing',
     <label>Nội dung giới thiệu</label><textarea name="synopsis" rows="4">${esc(n.synopsis)}</textarea>
     <div class="two"><div><label>Giá mỗi chương (đ)</label><input name="price" type="number" min="0" value="${esc(n.price)}"></div>
     <div>${imgField('cover', 'Ảnh bìa (link hoặc tải lên)', n.cover)}</div></div>
+    <label>Giá mua toàn tập (đ) — để trống nếu không bán trọn bộ</label><input name="full_price" type="number" min="0" value="${esc(n.full_price || '')}" placeholder="vd: 25000">
+    <div id="fpinfo" class="meta" style="margin-top:6px" aria-live="polite"></div>
     <label>Các quyển</label>
     <select id="vmode"><option value="all" ${mode === 'all' ? 'selected' : ''}>Toàn tập</option><option value="vol" ${mode === 'vol' ? 'selected' : ''}>Theo quyển</option></select>
     <div id="vall" ${mode === 'all' ? '' : 'hidden'}><label>Tổng số chương (tính từ chương 1)</label><input type="number" id="vtotal" min="1" value="${esc(total)}"></div>
@@ -356,6 +430,7 @@ function novelForm(n = { title: '', author: '', synopsis: '', status: 'ongoing',
         f => saveNovel({
             id: n.id, title: f.title.trim(), author: f.author.trim(), status: f.status, synopsis: f.synopsis,
             price: Math.max(0, parseInt(f.price, 10) || 0), cover: f.cover.trim(), volumes: buildVolumes(), reviews: parseLinks(f.reviews),
+            ...(('full_price' in n) || parseInt(f.full_price, 10) > 0 ? { full_price: Math.max(0, parseInt(f.full_price, 10) || 0) } : {}),
         }));
 
     const drawV = () => {
@@ -380,6 +455,22 @@ function novelForm(n = { title: '', author: '', synopsis: '', status: 'ongoing',
         }
     };
     drawV();
+
+    // Gõ giá toàn tập (hoặc đổi giá / số chương) → hiện ngay giá lẻ cả bộ và % rẻ hơn
+    const vnd = x => Number(x || 0).toLocaleString('vi-VN') + 'đ';
+    const totalNow = () => $('#vmode').value === 'all'
+        ? parseInt($('#vtotal').value, 10) || 0
+        : vols.reduce((m, v) => Math.max(m, parseInt(v.to, 10) || 0), 0);
+    const updDeal = () => {
+        const f = $('#frm').elements, price = +f.price.value || 0, fp = +f.full_price.value || 0, t = totalNow(), el = $('#fpinfo');
+        if (!(t > 0 && price > 0)) { el.textContent = fp ? 'Nhập số chương và giá mỗi chương để tính % rẻ hơn.' : ''; return; }
+        const d = fullDeal(price, t, fp);
+        if (!fp) el.textContent = `Giá lẻ cả bộ: ${vnd(d.retail)} (${t} chương × ${vnd(price)}). Nhập giá toàn tập để xem % rẻ hơn.`;
+        else if (d.pct) el.innerHTML = `Giá lẻ cả bộ ${vnd(d.retail)} → mua toàn tập <b>rẻ hơn ${d.pct}%</b> (tiết kiệm ${vnd(d.retail - fp)}).`;
+        else el.textContent = `⚠ Giá toàn tập không thấp hơn giá lẻ cả bộ (${vnd(d.retail)}), nên trang web sẽ không hiện "rẻ hơn".`;
+    };
+    $('#frm').oninput = $('#frm').onchange = updDeal;
+    updDeal();
 
     function buildVolumes() {
         if ($('#vmode').value === 'all') {

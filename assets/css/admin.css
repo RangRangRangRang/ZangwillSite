@@ -108,3 +108,13 @@ dialog:has(#vtab){width:min(680px,94vw)}
 .ed .lk{display:flex;flex-wrap:wrap}.ed .lk input{flex:1 1 150px;width:auto}
 
 .tag-in option{background:var(--card);color:var(--tx)}
+
+/* Sắp xếp truyện bằng kéo thả */
+.nrow{gap:10px}
+.grip{cursor:grab;font-size:22px;line-height:1;color:var(--mut);padding:0 4px;user-select:none}
+.grip:active{cursor:grabbing}
+.pos{min-width:26px;text-align:center;font-weight:700;color:var(--mut)}
+.nrow.dragging{opacity:.4;outline:2px dashed var(--ac)}
+.btn.mv{padding:0 10px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+@media(max-width:700px){.nrow{flex-wrap:wrap}.nrow .grip{display:none}}
