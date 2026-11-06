@@ -118,3 +118,8 @@ dialog:has(#vtab){width:min(680px,94vw)}
 .btn.mv{padding:0 10px}
 .btn:disabled{opacity:.35;cursor:not-allowed}
 @media(max-width:700px){.nrow{flex-wrap:wrap}.nrow .grip{display:none}}
+
+/* Thông báo nổi ở dưới màn hình: vẫn thấy được khi đang cuộn xuống giữa danh sách */
+#msg:empty{display:none}
+#msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;width:min(680px,92vw);box-shadow:0 10px 30px rgba(0,0,0,.35);border-radius:12px}
+#msg .calc,#msg .err{margin:0}

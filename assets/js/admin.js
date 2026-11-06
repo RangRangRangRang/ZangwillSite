@@ -21,6 +21,9 @@ function say(text, isErr = false) {
     const inForm = f && (!f.closest('dialog') || $('#dlg').open);
     $('#msg').innerHTML = inForm ? '' : html;
     if (f) f.innerHTML = inForm ? html : '';
+    // Thông báo thành công tự tắt sau 4 giây (lỗi thì giữ lại để đọc)
+    clearTimeout(say.t);
+    if (text && !isErr && !inForm) say.t = setTimeout(() => { if ($('#msg').innerHTML === html) $('#msg').innerHTML = ''; }, 4000);
 }
 // Chạy một thao tác, báo lỗi dễ hiểu nếu thất bại
 async function run(fn) {
@@ -93,11 +96,15 @@ async function sitePage() {
     };
 }
 
+let shownTab = ''; // tab đang hiển thị trên màn hình
 async function panel() {
     $('#logout').hidden = false;
-    if (tab === 'site') return sitePage();
+    if (tab === 'site') { shownTab = ''; return sitePage(); }
     if (queryTab !== tab) { adminQuery = ''; queryTab = tab; } // đổi tab thì xóa ô tìm
-    $('#app').innerHTML = `${tabsHtml()}
+    // Đang ở đúng tab rồi (vừa sửa/xóa/nhập xong) → chỉ tải lại danh sách, giữ nguyên vị trí cuộn và ô tìm kiếm
+    const refresh = shownTab === tab && !!$('#list');
+    const y = scrollY;
+    if (!refresh) $('#app').innerHTML = `${tabsHtml()}
     <div class="top"><h1>${tab === 'products' ? 'Phần mềm' : 'Truyện dịch'}</h1>
     <div class="row" style="margin:0">${tab === 'novels' ? '<button class="btn" data-act="tpl">⬇ File Excel mẫu</button><button class="btn" data-act="import">📥 Nhập từ Excel</button>' : ''}
     <button class="btn p" data-act="add">+ Thêm mới</button></div></div>
@@ -105,8 +112,10 @@ async function panel() {
     <input type="search" id="aq" placeholder="${tab === 'products' ? 'Tìm theo tên hoặc danh mục…' : 'Tìm theo tên truyện hoặc tác giả…'}" value="${esc(adminQuery)}" aria-label="Tìm trong danh sách" autocomplete="off" style="margin:0 0 14px">
     <div id="list"><div class="empty">Đang tải…</div></div>`;
     window.__items = tab === 'products' ? await getProducts() : await getNovels();
+    shownTab = tab;
     drawList();
-    if (tab === 'novels') enableDnD();
+    if (refresh) scrollTo(0, y);
+    else if (tab === 'novels') enableDnD();
 }
 
 const rowBtns = o => `<button class="btn" data-act="edit" data-id="${esc(o.id)}">Sửa</button><button class="btn d" data-act="del" data-id="${esc(o.id)}">Xóa</button>`;
