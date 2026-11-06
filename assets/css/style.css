@@ -114,7 +114,11 @@ svg.i{width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:2;st
 /* ===== Truyện dịch (lưới bìa) ===== */
 .ntools{display:flex;gap:10px;flex-wrap:wrap;margin:0 0 26px}
 .ntools input,.ntools select{min-height:40px;padding:0 14px;border:1px solid var(--line);border-radius:2px;background:var(--surface);color:var(--ink);font:500 13px var(--f-ui)}
-.ntools input{flex:1 1 240px;min-width:0}
+.ntools{align-items:center}
+.ntools input{flex:0 1 230px;min-width:0}
+.dirs{display:flex;gap:4px}
+.dirs .chip{width:40px;padding:0;justify-content:center}
+#nauthor{gap:6px}
 .ntools input:focus,.ntools select:focus{outline:2px solid var(--accent);outline-offset:1px}
 .ngrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:44px 32px}
 .tile{display:block;text-decoration:none;transition:transform .25s}
@@ -233,3 +237,24 @@ footer a{color:var(--mut)}
 .vpick{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0 22px;font-family:var(--f-ui)}
 .vsum{flex:1;min-width:180px;color:var(--mut);font-size:14px}
 .vsum b{color:var(--nv)}
+
+/* ===== Combo đồng tác giả: 2–3 banner xếp chéo nhau như bìa sách ở banner đầu trang ===== */
+#nauthor{max-width:210px}
+.cbrow{display:flex;justify-content:safe center;padding:34px 24px 44px;overflow-x:auto;overflow-y:hidden}
+.cb{position:relative;flex:0 0 auto;width:clamp(150px,21vw,230px);aspect-ratio:3/4;margin-left:clamp(-22px,-1.6vw,-14px);border-radius:2px 5px 5px 2px;overflow:hidden;color:#fff;text-decoration:none;
+  box-shadow:inset 5px 0 0 rgba(0,0,0,.22),0 22px 38px -18px rgba(40,25,5,.75);transition:transform .3s,box-shadow .3s}
+.cb:first-child{margin-left:0}
+.cb0{transform:rotate(-7deg) translateY(12px)}
+.cb1{transform:rotate(2deg) translateY(-10px);z-index:2}
+.cb2{transform:rotate(9deg) translateY(10px)}
+.cb:hover,.cb:focus-visible{transform:rotate(0) translateY(-18px) scale(1.05);z-index:6}
+.cbi{position:absolute;inset:0;background-size:cover;background-position:center}
+.cb::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 42%,rgba(0,0,0,.8))}
+.cbn{position:absolute;z-index:2;left:16px;right:14px;bottom:16px;display:flex;flex-direction:column;gap:4px}
+.cbn b{font:600 clamp(24px,2.6vw,32px)/1.05 var(--f-serif);text-shadow:0 2px 12px rgba(0,0,0,.55)}
+.cbn small{font:500 12px var(--f-ui);letter-spacing:.04em;color:rgba(255,246,230,.85)}
+/* Ruy băng nhỏ ở góc phải trên: -% giảm giá */
+.rib{position:absolute;z-index:3;top:0;right:24px;padding:7px 9px 17px;background:#DC2626;color:#fff;font:700 13px/1 var(--f-ui);letter-spacing:.02em;clip-path:polygon(0 0,100% 0,100% 100%,50% 80%,0 100%);box-shadow:0 4px 10px rgba(0,0,0,.3)}
+.cgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:28px 20px;margin-top:6px}
+.cgrid .tile b{font-size:19px}
+@media(max-width:800px){.ntools input{flex:1 1 100%}.cbrow{padding:28px 14px 38px}.cb{width:150px;margin-left:-14px}.cgrid{grid-template-columns:repeat(2,1fr)}}

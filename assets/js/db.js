@@ -40,6 +40,8 @@ const list = async table => ADMIN
     : swr(table);
 
 export const getProducts = () => list('products');
+// Combo đồng tác giả (bảng combos, tạo bằng supabase/update_v5.sql)
+export const getCombos = () => list('combos');
 // Cài đặt trang chủ (tên, lời giới thiệu, ảnh banner) lưu ở bảng settings, dòng key = 'site'
 export async function getSettings() {
     const rows = await list('settings');
@@ -120,6 +122,8 @@ export async function reorderNovels(ids) {
         ? 'Chưa cập nhật database. Hãy chạy file supabase/update_v4.sql trong SQL Editor rồi thử lại.' : error.message);
 }
 export const deleteNovel = id => remove('novels', id);
+export const saveCombo = c => save('combos', c);
+export const deleteCombo = id => remove('combos', id);
 
 /* ===== Tải ảnh lên Storage (bucket "images", chỉ admin) ===== */
 // Trả về URL công khai của ảnh để lưu vào cột icon / img / cover

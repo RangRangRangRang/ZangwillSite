@@ -4,9 +4,10 @@ const KEY = 'zw:cart';
 const subs = [];
 
 // Mỗi truyện tối đa một dòng: { id, mode: 'range', from, to } | { id, mode: 'full' } | { id, mode: 'vols', vols: [[từ, đến], …] } (các quyển đã tick)
+// Combo tác giả: { id: 'combo:<id combo>', mode: 'combo', cid: '<id combo>' }
 const isPair = p => Array.isArray(p) && Number.isInteger(p[0]) && Number.isInteger(p[1]) && p[0] >= 1 && p[1] >= p[0];
 const valid = x => x && typeof x.id === 'string' &&
-    (x.mode === 'full' || (x.mode === 'range' && Number.isInteger(x.from) && Number.isInteger(x.to) && x.from >= 1 && x.to >= x.from) ||
+    (x.mode === 'full' || (x.mode === 'combo' && typeof x.cid === 'string') || (x.mode === 'range' && Number.isInteger(x.from) && Number.isInteger(x.to) && x.from >= 1 && x.to >= x.from) ||
         (x.mode === 'vols' && Array.isArray(x.vols) && x.vols.length > 0 && x.vols.every(isPair)));
 
 function load() {
