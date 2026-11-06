@@ -309,7 +309,7 @@ function initCalc(n) {
 let backCombo = null; // id combo đang mở khi bấm vào một truyện bên trong → truyện đó hiện nút "Quay lại combo"
 function comboHtml(c) {
     const st = comboStats(c, DATA.novels);
-    return `<div class="dh2" style="margin-bottom:8px"><div><span class="tag ok"><i></i>Combo đồng tác giả</span><h1 id="dt">${esc(c.author)}</h1>
+    return `<div class="dh2" style="margin-bottom:8px"><div><span class="tag ok"><i></i>Combo</span><h1 id="dt">${esc(c.author)}</h1>
       <div class="meta"><span><b>${st.items.length}</b> truyện</span><span>Mua trọn bộ cả ${st.items.length} truyện</span></div></div></div>
      <div class="deal"><div><span class="lbl">Giá combo · ${st.items.length} truyện trọn bộ</span><b>${vnd(st.price)}</b>${st.pct ? `<s>${vnd(st.retail)}</s>` : ''}</div>${st.pct ? `<span class="save">Rẻ hơn ${st.pct}%</span>` : ''}
       <button class="btn nv" type="button" id="ccadd">${ic('cart')}Thêm combo vào giỏ</button><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>
@@ -363,7 +363,7 @@ function cartLines() {
         if (it.mode === 'combo') { // combo tác giả: giá tính lại từ dữ liệu hiện tại; combo bị xóa / còn dưới 2 truyện thì bỏ qua
             const c = DATA.combos.find(x => x.id === it.cid), st = c && comboStats(c, DATA.novels);
             return st && st.items.length >= 2 && st.price > 0
-                ? { n: { id: it.id, title: `Combo tác giả ${c.author}` }, text: `Trọn bộ ${st.items.length} truyện: ${st.items.map(x => x.title).join('; ')}`, price: st.price } : null;
+                ? { n: { id: it.id, title: `Combo ${c.author}` }, text: `Trọn bộ ${st.items.length} truyện: ${st.items.map(x => x.title).join('; ')}`, price: st.price } : null;
         }
         const n = DATA.novels.find(x => x.id === it.id), max = n && totalCh(n);
         if (!n || !max) return null;
