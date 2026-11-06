@@ -69,19 +69,17 @@ svg.i{width:1.15em;height:1.15em;fill:none;stroke:currentColor;stroke-width:2;st
 .ban-bg{position:absolute;inset:0;background-size:cover;background-position:center}
 .ban.has-img::before{content:"";position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,rgba(18,10,3,.88),rgba(18,10,3,.6) 52%,rgba(18,10,3,.2))}
 .ban-in{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:30px;align-items:center;padding:clamp(28px,5vw,64px) max(clamp(16px,4vw,48px),calc((100% - 1180px)/2 + clamp(16px,4vw,48px)));width:100%}
-.ban.has-img .ban-in{grid-template-columns:minmax(0,1fr)}
 .eyebrow{font-size:12px;letter-spacing:.2em;text-transform:uppercase;margin:0 0 16px;color:rgba(255,246,230,.72)}
 .ban h1{font-family:var(--f-serif);font-weight:500;font-size:clamp(38px,5.2vw,70px);line-height:1;letter-spacing:-.02em;margin:0 0 18px;color:#FFF6E6;text-shadow:0 2px 24px rgba(0,0,0,.35)}
 .ban .lead{max-width:46ch;font:italic 17px/1.7 var(--f-body);margin:0 0 26px;color:rgba(255,246,230,.88)}
 .ban .btns{margin-top:0}
 .ban .btn.sw{background:#F5D9A0;border-color:#F5D9A0;color:#2A1B10}.ban .btn.sw:hover{background:#fff;border-color:#fff}
 .ban .btn:not(.sw){background:transparent;color:#FFF6E6;border-color:rgba(255,246,230,.5)}.ban .btn:not(.sw):hover{background:rgba(255,246,230,.12);border-color:#FFF6E6}
-.chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:28px}
+.chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
 .chips a{font-size:13px;padding:0 16px 0 14px;min-height:40px;display:inline-flex;align-items:center;gap:10px;border:1px solid rgba(255,246,230,.28);background:rgba(255,246,230,.08);backdrop-filter:blur(6px);color:#FFF6E6;text-decoration:none;border-radius:2px;transition:background .2s}
 .chips a:hover{background:rgba(255,246,230,.18)}
 .chips b{font:500 24px/1 var(--f-serif)}
 .art{position:relative;align-self:stretch;min-height:340px}
-.ban.has-img .art{display:none}
 .win{position:absolute;right:2%;top:4%;width:min(340px,86%);aspect-ratio:16/10;border-radius:8px;background:#FFFBF0;box-shadow:0 34px 70px -22px rgba(0,0,0,.7);overflow:hidden;transform:rotate(-2.5deg)}
 .win .wh{height:24px;background:#EFE5CF;display:flex;gap:5px;align-items:center;padding:0 10px}
 .win .wh i{width:8px;height:8px;border-radius:50%;background:#C9B98F}
@@ -204,7 +202,7 @@ footer a{color:var(--mut)}
 
 /* ===== Điện thoại ===== */
 @media(max-width:800px){
-  .ban-in{grid-template-columns:1fr}.art{display:none}.ban{min-height:0}
+  .ban-in{grid-template-columns:1fr}.art:not(.fanbox){display:none}.ban{min-height:0}
   .top nav a{padding:0 8px;letter-spacing:.06em}
   .pgrid{grid-template-columns:repeat(2,1fr);gap:22px 14px}.pcard h3{font-size:18px}.pcard p{font-size:12.5px}
   .ngrid{grid-template-columns:repeat(2,1fr);gap:32px 18px}
@@ -238,23 +236,27 @@ footer a{color:var(--mut)}
 .vsum{flex:1;min-width:180px;color:var(--mut);font-size:14px}
 .vsum b{color:var(--nv)}
 
-/* ===== Combo đồng tác giả: 2–3 banner xếp chéo nhau như bìa sách ở banner đầu trang ===== */
+/* ===== Combo đồng tác giả: chùm 2–3 bìa xòe quạt ở bên phải banner (cho bìa giữa nằm sau, hai bìa bên nghiêng ra ngoài) ===== */
 #nauthor{max-width:210px}
-.cbrow{display:flex;justify-content:safe center;padding:34px 24px 44px;overflow-x:auto;overflow-y:hidden}
-.cb{position:relative;flex:0 0 auto;width:clamp(150px,21vw,230px);aspect-ratio:3/4;margin-left:clamp(-22px,-1.6vw,-14px);border-radius:2px 5px 5px 2px;overflow:hidden;color:#fff;text-decoration:none;
-  box-shadow:inset 5px 0 0 rgba(0,0,0,.22),0 22px 38px -18px rgba(40,25,5,.75);transition:transform .3s,box-shadow .3s}
-.cb:first-child{margin-left:0}
-.cb0{transform:rotate(-7deg) translateY(12px)}
-.cb1{transform:rotate(2deg) translateY(-10px);z-index:2}
-.cb2{transform:rotate(9deg) translateY(10px)}
-.cb:hover,.cb:focus-visible{transform:rotate(0) translateY(-18px) scale(1.05);z-index:6}
+.ban{--cw:clamp(140px,15vw,200px)}
+.fanbox{min-height:clamp(400px,40vw,470px)}
+.cb{position:absolute;left:50%;top:50%;width:var(--cw);aspect-ratio:3/4;border-radius:2px 5px 5px 2px;overflow:hidden;color:#fff;text-decoration:none;
+  box-shadow:inset 5px 0 0 rgba(0,0,0,.22),0 24px 44px -16px rgba(0,0,0,.8);transition:transform .3s,box-shadow .3s}
+.fan.c{transform:translate(-50%,-80%);z-index:1}
+.fan.l{transform:translate(-120%,-44%) rotate(-14deg);z-index:2}
+.fan.r{transform:translate(20%,-44%) rotate(14deg);z-index:3}
+.fan.c:hover,.fan.c:focus-visible{transform:translate(-50%,-86%) scale(1.05);z-index:6}
+.fan.l:hover,.fan.l:focus-visible{transform:translate(-120%,-50%) rotate(-9deg) scale(1.05);z-index:6}
+.fan.r:hover,.fan.r:focus-visible{transform:translate(20%,-50%) rotate(9deg) scale(1.05);z-index:6}
 .cbi{position:absolute;inset:0;background-size:cover;background-position:center}
 .cb::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 42%,rgba(0,0,0,.8))}
-.cbn{position:absolute;z-index:2;left:16px;right:14px;bottom:16px;display:flex;flex-direction:column;gap:4px}
-.cbn b{font:600 clamp(24px,2.6vw,32px)/1.05 var(--f-serif);text-shadow:0 2px 12px rgba(0,0,0,.55)}
+.cbn{position:absolute;z-index:2;left:14px;right:12px;bottom:14px;display:flex;flex-direction:column;gap:4px}
+.cbn b{font:600 clamp(22px,2.2vw,28px)/1.05 var(--f-serif);text-shadow:0 2px 12px rgba(0,0,0,.55)}
+.fan.c .cbn{left:27%;right:27%;align-items:center;text-align:center}
+.fan.c .cbn b{font-size:clamp(15px,1.5vw,19px)}
 .cbn small{font:500 12px var(--f-ui);letter-spacing:.04em;color:rgba(255,246,230,.85)}
 /* Ruy băng nhỏ ở góc phải trên: -% giảm giá */
-.rib{position:absolute;z-index:3;top:0;right:24px;padding:7px 9px 17px;background:#DC2626;color:#fff;font:700 13px/1 var(--f-ui);letter-spacing:.02em;clip-path:polygon(0 0,100% 0,100% 100%,50% 80%,0 100%);box-shadow:0 4px 10px rgba(0,0,0,.3)}
+.rib{position:absolute;z-index:3;top:0;right:12px;padding:7px 9px 17px;background:#DC2626;color:#fff;font:700 13px/1 var(--f-ui);letter-spacing:.02em;clip-path:polygon(0 0,100% 0,100% 100%,50% 80%,0 100%);box-shadow:0 4px 10px rgba(0,0,0,.3)}
 .cgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:28px 20px;margin-top:6px}
 .cgrid .tile b{font-size:19px}
-@media(max-width:800px){.ntools input{flex:1 1 100%}.cbrow{padding:28px 14px 38px}.cb{width:150px;margin-left:-14px}.cgrid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:800px){.ban{--cw:130px}.fanbox{min-height:340px}.ntools input{flex:1 1 100%}.cgrid{grid-template-columns:repeat(2,1fr)}}

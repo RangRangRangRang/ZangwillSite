@@ -137,15 +137,18 @@ function renderNovels() {
 // Chỉ hiện combo có ít nhất 2 truyện của tác giả đó (tự gom theo tên tác giả) và đã nhập giá combo
 const comboList = () => DATA.combos.map(c => ({ c, st: comboStats(c, DATA.novels) })).filter(x => x.st.items.length >= 2 && x.st.price > 0);
 const ribbon = pct => pct > 0 ? `<span class="rib" aria-label="Giảm ${pct}%">-${pct}%</span>` : '';
-function comboCard({ c, st }, i) {
+// Bìa combo; pos = l | c | r (vị trí trong chùm xòe quạt)
+function comboCard({ c, st }, pos) {
     const u = c.cover && safe(c.cover) !== '#' ? c.cover : '';
-    return `<a class="cb cb${i % 3}" href="#/combo/${esc(c.id)}" aria-label="Combo ${esc(c.author)}: ${st.items.length} truyện, ${vnd(st.price)}">
+    return `<a class="cb fan ${pos}" href="#/combo/${esc(c.id)}" aria-label="Combo ${esc(c.author)}: ${st.items.length} truyện, ${vnd(st.price)}">
       <div class="cbi ${u ? 'has' : ''}" style="${u ? `background-image:url('${cssUrl(u)}')` : `background:${grad(hueOf(c.author))}`}"></div>${ribbon(st.pct)}
       <div class="cbn"><b>${esc(c.author)}</b><small>${st.items.length} truyện · ${vnd(st.price)}</small></div></a>`;
 }
-function comboSection() {
-    const L = comboList();
-    return L.length ? `<section class="shelf" id="combo"><div class="sh"><h2>Combo đồng tác giả</h2></div><div class="cbrow">${L.map(comboCard).join('')}</div></section>` : '';
+// Chùm tối đa 3 bìa xòe quạt bên phải banner: 1 combo → giữa; 2 → trái + phải; 3 → trái + giữa + phải
+function comboFan() {
+    const L = comboList().slice(0, 3);
+    const pos = { 1: ['c'], 2: ['l', 'r'], 3: ['l', 'c', 'r'] }[L.length] || [];
+    return L.length ? `<div class="art fanbox" role="group" aria-label="Combo đồng tác giả">${L.map((x, i) => comboCard(x, pos[i])).join('')}</div>` : '';
 }
 
 function renderPage() {
@@ -154,13 +157,13 @@ function renderPage() {
     const tagline = esc(site.tagline || 'Một thư viện nhỏ: những sản phẩm mình tự làm, và những bộ truyện mình dịch — liên hệ để mua trực tiếp.');
     const bg = site.banner && safe(site.banner) !== '#' ? site.banner : '';
     const p0 = products[0];
-    const art = `<div class="art" aria-hidden="true">
+    const fan = comboFan();
+    const art = fan || (bg ? '' : `<div class="art" aria-hidden="true">
       ${p0 ? `<div class="win"><div class="wh"><i></i><i></i><i></i></div><div class="wb" style="background:${grad(hueOf(p0.name))}">${firstImg(p0) ? `<img src="${esc(safe(firstImg(p0)))}" alt="">` : esc(p0.name)}</div></div>` : ''}
-      ${novels.slice(0, 3).map((n, i) => `<div class="bk b${i + 1}">${cover(n)}</div>`).join('')}</div>`;
+      ${novels.slice(0, 3).map((n, i) => `<div class="bk b${i + 1}">${cover(n)}</div>`).join('')}</div>`);
     const links = contacts().map(c => `<a href="${esc(safe(c.url))}" data-app target="_blank" rel="noopener">${esc(c.name)}</a>`).join(' · ');
     $('#page').innerHTML = `<section class="ban ${rendered ? '' : 'view'} ${bg ? 'has-img' : ''}">${bg ? `<div class="ban-bg" style="background-image:url('${cssUrl(bg)}')"></div>` : ''}
       <div class="ban-in"><div><p class="eyebrow">Xin chào</p><h1>Mình là ${name},<br>làm phần mềm &amp; dịch truyện.</h1><p class="lead">${tagline}</p>
-       <div class="btns"><a class="btn sw" href="#/sp">${ic('code')}Phần mềm</a><a class="btn" href="#/truyen">${ic('book')}Truyện dịch</a></div>
        <div class="chips"><a href="#/sp"><b>${products.length}</b>phần mềm</a><a href="#/truyen"><b>${novels.length}</b>truyện dịch</a></div></div>${art}</div></section>
      <div class="wrap ${rendered ? '' : 'view'}">
      <section class="shelf" id="sp" style="margin-top:0"><div class="sh"><h2>Phần mềm</h2><div class="filters" id="filters" role="group" aria-label="Lọc theo danh mục"></div></div><div class="pgrid" id="pgrid"></div></section>
@@ -170,7 +173,6 @@ function renderPage() {
        <select id="nauthor" aria-label="Lọc theo tác giả">${authorOptions()}</select>
        <div class="dirs" role="group" aria-label="Chiều sắp xếp"><button class="chip" id="ndown" type="button" aria-pressed="${nDir > 0}" aria-label="Sắp từ trên xuống dưới (A→Z, ít→nhiều, thấp→cao)" title="Từ trên xuống: A→Z, ít→nhiều, thấp→cao">${ic('down')}</button><button class="chip" id="nup" type="button" aria-pressed="${nDir < 0}" aria-label="Sắp từ dưới lên trên (Z→A, nhiều→ít, cao→thấp)" title="Từ dưới lên: Z→A, nhiều→ít, cao→thấp">${ic('up')}</button></div></div>
        <div class="ngrid" id="ngrid"></div>` : '<div class="empty">Chưa có truyện nào.</div>'}</section>
-     ${comboSection()}
      <footer>${links ? `Liên hệ mua truyện: ${links} · ` : ''}<a href="admin.html">Quản trị</a></footer></div>`;
     renderProducts();
     renderNovels();
