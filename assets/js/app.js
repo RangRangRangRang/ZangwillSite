@@ -1,7 +1,7 @@
 // Trang công khai (chỉ đọc): một trang cuộn gồm Banner → Phần mềm → Truyện dịch.
 // Bấm vào một mục sẽ mở cửa sổ chi tiết (địa chỉ #/sp/<id> hoặc #/truyen/<id>, mở thẳng được).
 import { getProducts, getProduct, getNovels, getNovel, getCombos, getSettings, onData } from './db.js';
-import { esc, safe, imgList, fullDeal, comboStats } from './util.js';
+import { esc, safe, imgList, fullDeal, comboStats, fullPriceOf } from './util.js';
 import { CONTACTS } from './config.js';
 import { getCart, inCart, addItem, removeItem, clearCart, onCartChange } from './cart.js';
 import './applink.js'; // bấm link liên hệ thì mở thẳng app (Zalo, Facebook…)
@@ -83,7 +83,8 @@ async function load() {
 /* ===== Trang chính ===== */
 const pCard = p => `<a class="pcard" href="#/sp/${esc(p.id)}"><div class="thumb" aria-hidden="true">${thumb(p)}<span class="em">${iconOf(p)}</span></div>
   <h3>${esc(p.name)}</h3><p>${esc(p.short)}</p><div class="pm"><span class="tag">${esc(p.cat)}</span>${p.version ? `<span class="ver">v${esc(p.version)}</span>` : ''}</div></a>`;
-const nCard = n => `<a class="tile" href="#/truyen/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${totalCh(n) ? totalCh(n) + ' chương' : 'Đang cập nhật'} · ${vnd(n.price)}/chương</small></a>`;
+// full = true (trong cửa sổ combo): hiện giá mua trọn bộ thay vì giá mỗi chương
+const nCard = (n, full) => `<a class="tile" href="#/truyen/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${totalCh(n) ? totalCh(n) + ' chương' : 'Đang cập nhật'} · ${full ? vnd(fullPriceOf(n)) + ' trọn bộ' : vnd(n.price) + '/chương'}</small></a>`;
 
 function renderProducts() {
     const { products } = DATA;
@@ -247,13 +248,15 @@ function dealHtml(n, max) {
 const volLabel = v => `${v.name}${v.title ? ' – ' + v.title : ''}`;
 
 function novelHtml(n) {
+    const bc = backCombo && DATA.combos.find(x => x.id === backCombo);
     const max = totalCh(n), vols = n.volumes || [];
     const pickable = vols.length > 1 && Number(n.price) > 0; // truyện chia quyển → cho tick chọn quyển
     const reviews = (n.reviews || []).map(x => {
         const [i, nm] = platform(x.url);
         return `<a class="rv" href="${esc(safe(x.url))}" target="_blank" rel="noopener"><span class="pi">${ic(i)}</span><div><b>${esc(x.label || nm)}</b><small>${esc(nm)}</small></div><span class="go">${ic('ext')}</span></a>`;
     }).join('');
-    return `<div class="dh2">${cover(n)}<div>${stTag(n.status)}<h1 id="dt">${esc(n.title)}</h1></div></div>
+    return `${bc ? `<a class="btn back" href="#/combo/${esc(bc.id)}">${ic('prev')}Quay lại combo ${esc(bc.author)}</a>` : ''}
+     <div class="dh2">${cover(n)}<div>${stTag(n.status)}<h1 id="dt">${esc(n.title)}</h1></div></div>
      <div class="meta"><span>Tác giả: <b>${esc(n.author || '—')}</b></span><span>${max ? max + ' chương' : 'Đang cập nhật số chương'}</span><span><b>${vnd(n.price)}</b>/chương</span></div>
      ${dealHtml(n, max)}
      ${intro(n.synopsis)}
@@ -303,19 +306,21 @@ function initCalc(n) {
 }
 
 // Cửa sổ combo: các truyện của tác giả (như lưới truyện) + giá combo, % rẻ hơn, nút thêm vào giỏ
+let backCombo = null; // id combo đang mở khi bấm vào một truyện bên trong → truyện đó hiện nút "Quay lại combo"
 function comboHtml(c) {
     const st = comboStats(c, DATA.novels);
     return `<div class="dh2" style="margin-bottom:8px"><div><span class="tag ok"><i></i>Combo đồng tác giả</span><h1 id="dt">${esc(c.author)}</h1>
       <div class="meta"><span><b>${st.items.length}</b> truyện</span><span>Mua trọn bộ cả ${st.items.length} truyện</span></div></div></div>
      <div class="deal"><div><span class="lbl">Giá combo · ${st.items.length} truyện trọn bộ</span><b>${vnd(st.price)}</b>${st.pct ? `<s>${vnd(st.retail)}</s>` : ''}</div>${st.pct ? `<span class="save">Rẻ hơn ${st.pct}%</span>` : ''}
       <button class="btn nv" type="button" id="ccadd">${ic('cart')}Thêm combo vào giỏ</button><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>
-     <h3 class="h">Gồm các truyện</h3><div class="ngrid cgrid">${st.items.map(nCard).join('')}</div>`;
+     <h3 class="h">Gồm các truyện</h3><div class="ngrid cgrid">${st.items.map(n => nCard(n, true)).join('')}</div>`;
 }
 
 async function openDetail(sec, id) {
     if (sec === 'combo') {
         const c = DATA.combos.find(x => x.id === id);
         if (!c || comboStats(c, DATA.novels).items.length < 2) return closeDetail(true);
+        backCombo = null; // đã quay lại combo
         dlg.innerHTML = `<button class="xbtn" id="x" type="button" aria-label="Đóng">${ic('x')}</button><div class="dc">${comboHtml(c)}</div>`;
         dlg.setAttribute('aria-labelledby', 'dt');
         if (!dlg.open) dlg.showModal();
@@ -340,8 +345,13 @@ function closeDetail(clearHash) {
     if (clearHash) history.replaceState(null, '', location.pathname + location.search);
 }
 // Đóng bằng nút, phím Esc hoặc bấm ra ngoài → bỏ phần #/sp/<id> khỏi địa chỉ
-dlg.addEventListener('close', () => { if (/^#\/(sp|truyen|combo)\/./.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); });
-dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+dlg.addEventListener('close', () => { backCombo = null; if (/^#\/(sp|truyen|combo)\/./.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); });
+dlg.addEventListener('click', e => {
+    if (e.target === dlg) dlg.close();
+    // Bấm truyện trong cửa sổ combo → nhớ combo đó; bấm truyện từ nơi khác → bỏ nút quay lại
+    const t = e.target.closest('a.tile');
+    if (t) { const m = location.hash.match(/^#\/combo\/(.+)$/); backCombo = m ? decodeURIComponent(m[1]) : null; }
+});
 
 
 /* ===== Giỏ hàng (chỉ để chọn truyện rồi gửi danh sách cho chủ web qua Zalo/Facebook, không thanh toán) ===== */

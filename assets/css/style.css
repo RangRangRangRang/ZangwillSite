@@ -260,3 +260,5 @@ footer a{color:var(--mut)}
 .cgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:28px 20px;margin-top:6px}
 .cgrid .tile b{font-size:19px}
 @media(max-width:800px){.ban{--cw:130px}.fanbox{min-height:340px}.ntools input{flex:1 1 100%}.cgrid{grid-template-columns:repeat(2,1fr)}}
+
+.btn.back{margin:4px 0 18px;min-height:40px}
