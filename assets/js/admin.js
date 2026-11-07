@@ -73,28 +73,80 @@ const tabsHtml = () => `<div class="tabs">
     <button class="btn ${tab === 'combos' ? 'on' : ''}" data-tab="combos">🎁 Combo</button>
     <button class="btn ${tab === 'site' ? 'on' : ''}" data-tab="site">🏠 Trang chủ</button></div>`;
 
-// Tab "Trang chủ": tên hiển thị, lời giới thiệu và ảnh banner
+const num = (v, lo, hi, d) => { v = parseFloat(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; }; // số trong khoảng [lo, hi], sai thì lấy mặc định d
+// Tab "Trang chủ": nửa trái nhập liệu (chữ, link ảnh, độ mờ / đậm nhạt), nửa phải là bản xem trước CHÍNH trang chủ, cập nhật ngay khi gõ / kéo
+let pvCleanup = null;
 async function sitePage() {
+    if (pvCleanup) { pvCleanup(); pvCleanup = null; }
     let s = {};
     try { s = await getSettings(); } catch (e) { console.error(e); }
-    $('#app').innerHTML = `${tabsHtml()}<div class="top"><h1>Trang chủ</h1></div>
-    <form id="sf" class="detail"><div id="fmsg"></div>
+    const slider = (name, label, min, max, step, d, unit) => `<label>${label}</label>
+      <div class="sl"><input type="range" name="${name}" min="${min}" max="${max}" step="${step}" value="${num(s[name], min, max, d)}" data-unit="${unit}"><b data-v="${name}"></b></div>`;
+    $('#app').innerHTML = `${tabsHtml()}<div class="top"><h1>Trang chủ</h1><div class="sub">Chỉnh bên trái, xem kết quả ngay bên phải. Bấm Lưu để áp dụng cho khách.</div></div>
+    <div class="sitegrid">
+    <form id="sf" class="detail">
+      <div class="sec">✍️ Chữ</div>
       <label>Tên hiển thị (câu "Mình là …")</label><input name="name" placeholder="[Tên bạn]" value="${esc(s.name || '')}">
       <label>Lời giới thiệu ngắn dưới tiêu đề</label><textarea name="tagline" rows="3" placeholder="Để trống = dùng câu mặc định">${esc(s.tagline || '')}</textarea>
-      ${imgField('banner', 'Ảnh banner (link hoặc tải lên — nên dùng ảnh ngang khoảng 1600×700, dưới 3MB)', s.banner || '')}
-      <div class="meta" style="margin-top:6px">Để trống ô ảnh = dùng banner mặc định (cửa sổ ứng dụng + bìa truyện).</div>
-      <div id="bprev" style="margin-top:10px"></div>
-      <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn p" type="submit">Lưu</button></div></form>`;
-    const prev = () => { const v = ($('#sf').elements.banner.value || '').trim(); $('#bprev').innerHTML = /^https?:/i.test(v) ? `<img src="${esc(safe(v))}" alt="" style="max-width:100%;max-height:200px;border-radius:8px">` : ''; };
-    $('#sf').addEventListener('input', e => { if (e.target.name === 'banner') prev(); });
-    prev();
-    $('#sf').onsubmit = e => {
+
+      <div class="sec">🖼 Ảnh nền banner</div>
+      ${imgField('banner', 'Dán link ảnh, hoặc bấm "Chọn tệp" để tải lên (ảnh ngang, tối thiểu 1600×700, dưới 3MB). Để trống = banner mặc định', s.banner || '')}
+      ${slider('bgblur', 'Độ mờ ảnh banner', 0, 12, 1, 0, 'px')}
+      ${slider('bgdim', 'Độ tối lớp phủ banner (để chữ dễ đọc)', 0, 120, 5, 100, '%')}
+      ${slider('bgpop', 'Độ nổi của bìa combo (quầng sáng + bóng đổ)', 0, 100, 5, 0, '%')}
+
+      <div class="sec">🌌 Ảnh nền cả trang</div>
+      ${imgField('pagebg', 'Dán link ảnh, hoặc tải lên (nằm dưới mọi mục, cố định khi cuộn — ảnh ngang ≥ 1920px, nên dưới 1MB). Để trống = nền màu mặc định', s.pagebg || '')}
+      ${slider('pageblur', 'Độ mờ ảnh nền trang', 0, 20, 1, 0, 'px')}
+      ${slider('pagedim', 'Độ phủ màu nền (cao = ảnh mờ nhạt, chữ dễ đọc)', 0, 100, 5, 80, '%')}
+
+      <div class="savebar"><div id="fmsg"></div><button class="btn p" type="submit">Lưu</button></div>
+    </form>
+    <aside class="pvpane" aria-label="Xem trước trang chủ">
+      <div class="pvbar"><b>👁 Xem trước</b>
+        <button class="btn on" type="button" data-pv="desk">Máy tính</button><button class="btn" type="button" data-pv="mob">Điện thoại</button></div>
+      <div class="pvbox" id="pvbox"><iframe id="pvf" src="index.html?preview=1" title="Xem trước trang chủ"></iframe></div>
+    </aside></div>`;
+
+    const form = $('#sf'), el = form.elements;
+    const collect = () => ({
+        name: el.namedItem('name').value.trim(), tagline: el.tagline.value.trim(), banner: el.banner.value.trim(),
+        bgblur: num(el.bgblur.value, 0, 12, 0), bgdim: num(el.bgdim.value, 0, 120, 100), bgpop: num(el.bgpop.value, 0, 100, 0),
+        pagebg: el.pagebg.value.trim(), pageblur: num(el.pageblur.value, 0, 20, 0), pagedim: num(el.pagedim.value, 0, 100, 80),
+    });
+    // Số hiện cạnh thanh trượt
+    const labels = () => form.querySelectorAll('[data-v]').forEach(b => { const i = el.namedItem(b.dataset.v); b.textContent = i.value + i.dataset.unit; });
+    // Gửi cài đặt đang soạn vào khung xem trước (mỗi khung hình tối đa 1 lần)
+    let raf = 0;
+    const send = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { const w = $('#pvf') && $('#pvf').contentWindow; if (w) w.postMessage({ type: 'zw-site', site: collect() }, location.origin); }); };
+    form.addEventListener('input', () => { labels(); send(); });
+    labels();
+
+    // Khung xem trước: dựng ở bề ngang thật (1280px máy tính / 390px điện thoại) rồi thu nhỏ vừa nửa phải
+    let mode = 'desk';
+    const fit = () => {
+        const box = $('#pvbox'), f = $('#pvf'); if (!box || !f) return;
+        const W = mode === 'desk' ? 1280 : 390, k = Math.min(1, box.clientWidth / W);
+        f.style.width = W + 'px'; f.style.height = box.clientHeight / k + 'px';
+        f.style.transform = `scale(${k})`; f.style.left = Math.max(0, (box.clientWidth - W * k) / 2) + 'px';
+    };
+    const ro = new ResizeObserver(fit); ro.observe($('#pvbox')); fit();
+    const onMsg = e => { if (e.origin === location.origin && e.data && e.data.type === 'zw-ready') send(); };
+    addEventListener('message', onMsg);
+    $('#pvf').addEventListener('load', send);
+    document.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => {
+        mode = b.dataset.pv;
+        document.querySelectorAll('[data-pv]').forEach(x => x.classList.toggle('on', x === b));
+        fit();
+    });
+    pvCleanup = () => { ro.disconnect(); removeEventListener('message', onMsg); cancelAnimationFrame(raf); };
+
+    form.onsubmit = e => {
         e.preventDefault();
-        const f = Object.fromEntries(new FormData(e.target));
         run(async () => {
-            try { await saveSettings({ name: f.name.trim(), tagline: f.tagline.trim(), banner: f.banner.trim() }); }
+            try { await saveSettings(collect()); }
             catch (err) { throw new Error(settingsHint(err)); }
-            say('Đã lưu. Mở lại trang chủ để xem thay đổi.');
+            say('Đã lưu. Trang chủ đã cập nhật cho khách.');
         });
     };
 }
@@ -102,6 +154,7 @@ async function sitePage() {
 let shownTab = ''; // tab đang hiển thị trên màn hình
 async function panel() {
     $('#logout').hidden = false;
+    document.querySelector('main').classList.toggle('wide', tab === 'site'); // tab Trang chủ cần chỗ rộng cho 2 nửa
     if (tab === 'site') { shownTab = ''; return sitePage(); }
     if (queryTab !== tab) { adminQuery = ''; queryTab = tab; } // đổi tab thì xóa ô tìm
     // Đang ở đúng tab rồi (vừa sửa/xóa/nhập xong) → chỉ tải lại danh sách, giữ nguyên vị trí cuộn và ô tìm kiếm

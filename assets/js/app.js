@@ -73,18 +73,23 @@ function platform(u) {
 
 /* ===== Dữ liệu ===== */
 let DATA = { products: [], novels: [], combos: [], site: {} };
+// Chế độ xem trước (trang admin → Trang chủ nhúng trang này trong khung và gửi cài đặt đang soạn qua postMessage)
+const PREVIEW = new URLSearchParams(location.search).has('preview');
+let previewSite = null;
 let curCat = 'all';
 async function load() {
     // Chưa chạy update_v5.sql (chưa có bảng combos) thì bỏ qua, web vẫn chạy bình thường
     const [products, novels, site, combos] = await Promise.all([getProducts(), getNovels(), getSettings().catch(() => ({})), getCombos().catch(() => [])]);
-    DATA = { products, novels, combos: combos || [], site: site || {} };
+    DATA = { products, novels, combos: combos || [], site: previewSite || site || {} };
 }
 
 /* ===== Trang chính ===== */
 const pCard = p => `<a class="pcard" href="#/sp/${esc(p.id)}"><div class="thumb" aria-hidden="true">${thumb(p)}<span class="em">${iconOf(p)}</span></div>
   <h3>${esc(p.name)}</h3><p>${esc(p.short)}</p><div class="pm"><span class="tag">${esc(p.cat)}</span>${p.version ? `<span class="ver">v${esc(p.version)}</span>` : ''}</div></a>`;
 // full = true (trong cửa sổ combo): hiện giá mua trọn bộ thay vì giá mỗi chương
-const nCard = (n, full) => `<a class="tile" href="#/truyen/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${totalCh(n) ? totalCh(n) + ' chương' : 'Đang cập nhật'} · ${full ? vnd(fullPriceOf(n)) + ' trọn bộ' : vnd(n.price) + '/chương'}</small></a>`;
+// Giá hiện trên thẻ: ưu tiên giá trọn bộ; chưa tính được trọn bộ (chưa có giá/số chương) thì hiện giá mỗi chương
+const priceLine = n => fullPriceOf(n) > 0 ? vnd(fullPriceOf(n)) + ' trọn bộ' : (Number(n.price) > 0 ? vnd(n.price) + '/chương' : 'Liên hệ');
+const nCard = n => `<a class="tile" href="#/truyen/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${totalCh(n) ? totalCh(n) + ' chương' : 'Đang cập nhật'} · <span class="pr">${priceLine(n)}</span></small></a>`;
 
 function renderProducts() {
     const { products } = DATA;
@@ -131,7 +136,7 @@ function renderNovels() {
         .map(([k, l]) => `<button class="chip" data-st="${k}" aria-pressed="${nStatus === k}">${l}</button>`).join('');
     $('#ndown').setAttribute('aria-pressed', nDir > 0);
     $('#nup').setAttribute('aria-pressed', nDir < 0);
-    $('#ngrid').innerHTML = list.map(nCard).join('') || '<div class="empty">Không tìm thấy truyện nào.</div>';
+    $('#ngrid').innerHTML = list.map(n => nCard(n)).join('') || '<div class="empty">Không tìm thấy truyện nào.</div>';
 }
 
 /* ===== Combo đồng tác giả: banner xếp chéo như bìa sách ở banner đầu trang, bấm vào mở cửa sổ chi tiết ===== */
@@ -145,11 +150,49 @@ function comboCard({ c, st }, pos) {
       <div class="cbi ${u ? 'has' : ''}" style="${u ? `background-image:url('${cssUrl(u)}')` : `background:${grad(hueOf(c.author))}`}"></div>${ribbon(st.pct)}
       <div class="cbn"><b>${esc(c.author)}</b><small>${st.items.length} truyện · ${vnd(st.price)}</small></div></a>`;
 }
-// Chùm tối đa 3 bìa xòe quạt bên phải banner: 1 combo → giữa; 2 → trái + phải; 3 → trái + giữa + phải
+// Chùm 3 bìa xòe quạt bên phải banner. Từ 4 combo trở lên: tự trượt từng bìa (cửa sổ 3 bìa, xoay vòng) + nút ‹ › + chấm chọn
+let fanI = 0, fanTimer = null;
+function fanInner() {
+    const all = comboList(), n = all.length, k = Math.min(3, n);
+    const L = Array.from({ length: k }, (_, i) => all[(fanI + i) % n]);
+    const pos = { 1: ['c'], 2: ['l', 'r'], 3: ['l', 'c', 'r'] }[k] || [];
+    const nav = n > 3 ? `<div class="fnav"><button type="button" data-fan="-1" aria-label="Combo trước">‹</button>
+      <span class="fdots">${all.map((_, i) => `<button type="button" class="fd" data-fan-to="${i}" aria-label="Combo ${i + 1}" aria-current="${i === fanI}"></button>`).join('')}</span>
+      <button type="button" data-fan="1" aria-label="Combo sau">›</button></div>` : '';
+    // Bìa thứ 4 mờ ló ra bên phải, báo cho khách biết còn combo khác (bấm vào = sang combo kế)
+    const ghost = n > 3 ? comboCard(all[(fanI + 3) % n], 'g').replace('<a class="cb', '<a tabindex="-1" aria-hidden="true" class="cb') : '';
+    return ghost + L.map((x, i) => comboCard(x, pos[i])).join('') + nav;
+}
 function comboFan() {
-    const L = comboList().slice(0, 3);
-    const pos = { 1: ['c'], 2: ['l', 'r'], 3: ['l', 'c', 'r'] }[L.length] || [];
-    return L.length ? `<div class="art fanbox" role="group" aria-label="Combo đồng tác giả">${L.map((x, i) => comboCard(x, pos[i])).join('')}</div>` : '';
+    return comboList().length ? `<div class="art fanbox" id="fanbox" data-n="${Math.min(3, comboList().length)}" role="group" aria-label="Combo đồng tác giả">${fanInner()}</div>` : '';
+}
+function fanGo(d, abs) {
+    const n = comboList().length, box = $('#fanbox');
+    if (!box || n < 4) return;
+    fanI = abs != null ? abs : (fanI + d + n) % n;
+    box.innerHTML = fanInner();
+}
+function fanStart() {
+    clearInterval(fanTimer); fanTimer = null;
+    if (comboList().length < 4 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    fanTimer = setInterval(() => { const b = $('#fanbox'); if (!b) return clearInterval(fanTimer); if (!b.matches(':hover') && !b.contains(document.activeElement)) fanGo(1); }, 4500);
+}
+document.addEventListener('click', e => {
+    if (e.target.closest('.fan.g')) { e.preventDefault(); fanGo(1); fanStart(); return; }
+    const b = e.target.closest('[data-fan],[data-fan-to]');
+    if (!b) return;
+    if (b.dataset.fanTo != null) fanGo(0, +b.dataset.fanTo); else fanGo(+b.dataset.fan);
+    fanStart(); // bấm tay thì tính lại nhịp tự trượt
+});
+
+// Ảnh nền cả trang: một lớp cố định sau mọi nội dung; lớp phủ màu nền (--bg) quyết định ảnh hiện rõ hay mờ nhạt
+function applyPageBg(site) {
+    let el = $('#pgbg');
+    const u = site.pagebg && safe(site.pagebg) !== '#' ? site.pagebg : '';
+    if (!u) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'pgbg'; el.setAttribute('aria-hidden', 'true'); document.body.prepend(el); }
+    const nm = (v, lo, hi, d) => { v = parseFloat(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+    el.style.cssText = `--pgblur:${nm(site.pageblur, 0, 20, 0)}px;--pgdim:${nm(site.pagedim, 0, 100, 80) / 100};background-image:url('${cssUrl(u)}')`;
 }
 
 function renderPage() {
@@ -163,21 +206,26 @@ function renderPage() {
       ${p0 ? `<div class="win"><div class="wh"><i></i><i></i><i></i></div><div class="wb" style="background:${grad(hueOf(p0.name))}">${firstImg(p0) ? `<img src="${esc(safe(firstImg(p0)))}" alt="">` : esc(p0.name)}</div></div>` : ''}
       ${novels.slice(0, 3).map((n, i) => `<div class="bk b${i + 1}">${cover(n)}</div>`).join('')}</div>`);
     const links = contacts().map(c => `<a href="${esc(safe(c.url))}" data-app target="_blank" rel="noopener">${esc(c.name)}</a>`).join(' · ');
-    $('#page').innerHTML = `<section class="ban ${rendered ? '' : 'view'} ${bg ? 'has-img' : ''}">${bg ? `<div class="ban-bg" style="background-image:url('${cssUrl(bg)}')"></div>` : ''}
+    const nm = (v, lo, hi, d) => { v = parseFloat(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+    const bgVars = `--bgblur:${nm(site.bgblur, 0, 12, 0)}px;--dim:${nm(site.bgdim, 0, 120, 100) / 100};--pop:${nm(site.bgpop, 0, 100, 0) / 100}`;
+    $('#page').innerHTML = `<section class="ban ${rendered ? '' : 'view'} ${bg ? 'has-img' : ''}" style="${bgVars}">${bg ? `<div class="ban-bg" style="background-image:url('${cssUrl(bg)}')"></div>` : ''}
       <div class="ban-in"><div><p class="eyebrow">Xin chào</p><h1>Mình là ${name},<br>làm phần mềm &amp; dịch truyện.</h1><p class="lead">${tagline}</p>
        <div class="chips"><a href="#/sp"><b>${products.length}</b>phần mềm</a><a href="#/truyen"><b>${novels.length}</b>truyện dịch</a></div></div>${art}</div></section>
      <div class="wrap ${rendered ? '' : 'view'}">
      <section class="shelf" id="sp" style="margin-top:0"><div class="sh"><h2>Phần mềm</h2><div class="filters" id="filters" role="group" aria-label="Lọc theo danh mục"></div></div><div class="pgrid" id="pgrid"></div></section>
-     <section class="shelf" id="truyen"><div class="sh"><h2>Truyện dịch</h2><div class="filters" id="nfilters" role="group" aria-label="Lọc theo trạng thái"></div></div>
+     <section class="shelf" id="truyen"><div class="sh"><h2>Truyện dịch</h2></div>
       ${novels.length ? `<div class="ntools"><input id="nq" type="search" placeholder="Tìm tên truyện, tác giả…" value="${esc(nQuery)}" aria-label="Tìm truyện" autocomplete="off">
        <select id="nsort" aria-label="Sắp xếp truyện">${SORTS.map(([k, l]) => `<option value="${k}" ${nSort === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
        <select id="nauthor" aria-label="Lọc theo tác giả">${authorOptions()}</select>
+       <div class="filters" id="nfilters" role="group" aria-label="Lọc theo trạng thái"></div>
        <div class="dirs" role="group" aria-label="Chiều sắp xếp"><button class="chip" id="ndown" type="button" aria-pressed="${nDir > 0}" aria-label="Sắp từ trên xuống dưới (A→Z, ít→nhiều, thấp→cao)" title="Từ trên xuống: A→Z, ít→nhiều, thấp→cao">${ic('down')}</button><button class="chip" id="nup" type="button" aria-pressed="${nDir < 0}" aria-label="Sắp từ dưới lên trên (Z→A, nhiều→ít, cao→thấp)" title="Từ dưới lên: Z→A, nhiều→ít, cao→thấp">${ic('up')}</button></div></div>
        <div class="ngrid" id="ngrid"></div>` : '<div class="empty">Chưa có truyện nào.</div>'}</section>
      <footer>${links ? `Liên hệ mua truyện: ${links} · ` : ''}<a href="admin.html">Quản trị</a></footer></div>`;
+    applyPageBg(site);
     renderProducts();
     renderNovels();
     renderBadge();
+    fanStart();
 }
 
 // Bấm nút chọn danh mục (dùng data-cat thay vì onclick để an toàn)
@@ -313,7 +361,7 @@ function comboHtml(c) {
       <div class="meta"><span><b>${st.items.length}</b> truyện</span><span>Mua trọn bộ cả ${st.items.length} truyện</span></div></div></div>
      <div class="deal"><div><span class="lbl">Giá combo · ${st.items.length} truyện trọn bộ</span><b>${vnd(st.price)}</b>${st.pct ? `<s>${vnd(st.retail)}</s>` : ''}</div>${st.pct ? `<span class="save">Rẻ hơn ${st.pct}%</span>` : ''}
       <button class="btn nv" type="button" id="ccadd">${ic('cart')}Thêm combo vào giỏ</button><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>
-     <h3 class="h">Gồm các truyện</h3><div class="ngrid cgrid">${st.items.map(n => nCard(n, true)).join('')}</div>`;
+     <h3 class="h">Gồm các truyện</h3><div class="ngrid cgrid">${st.items.map(n => nCard(n)).join('')}</div>`;
 }
 
 async function openDetail(sec, id) {
@@ -457,6 +505,17 @@ async function route() {
     closeDetail(false);
     const s = location.hash.match(/^#\/(sp|truyen)$/);   // liên kết cũ #/sp, #/truyen → cuộn tới mục
     if (s) document.getElementById(s[1])?.scrollIntoView({ behavior: 'smooth' });
+}
+if (PREVIEW) {
+    addEventListener('message', e => {
+        if (e.origin !== location.origin || !e.data || e.data.type !== 'zw-site') return;
+        previewSite = e.data.site || {};
+        DATA.site = previewSite;
+        if (rendered) { const y = scrollY; renderPage(); scrollTo(0, y); }
+    });
+    // Trong khung xem trước: chặn chuyển trang, chỉ để xem
+    document.addEventListener('click', e => { const a = e.target.closest('a[href]'); if (a) e.preventDefault(); }, true);
+    parent.postMessage({ type: 'zw-ready' }, location.origin);
 }
 addEventListener('hashchange', route);
 $('#logo').addEventListener('click', () => scrollTo({ top: 0, behavior: 'smooth' }));
