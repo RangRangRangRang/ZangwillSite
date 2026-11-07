@@ -94,7 +94,7 @@ let curCat = 'all';
 async function load() {
     // Chưa chạy update_v5.sql (chưa có bảng combos) thì bỏ qua, web vẫn chạy bình thường
     const [products, novels, site, combos] = await Promise.all([getProducts(), getNovels(), getSettings().catch(() => ({})), getCombos().catch(() => [])]);
-    DATA = { products, novels, combos: combos || [], site: previewSite || site || {} };
+    DATA = { products, novels: novels.map(normNovel), combos: combos || [], site: previewSite || site || {} };
 }
 
 /* ===== Trang chính ===== */
@@ -102,8 +102,8 @@ const pCard = p => `<a class="pcard" href="#/sp/${esc(p.id)}"><div class="thumb"
   <h3>${esc(p.name)}</h3><p>${esc(p.short)}</p><div class="pm"><span class="tag">${esc(p.cat)}</span>${p.version ? `<span class="ver">v${esc(p.version)}</span>` : ''}</div></a>`;
 // full = true (trong cửa sổ combo): hiện giá mua trọn bộ thay vì giá mỗi chương
 // Giá hiện trên thẻ: ưu tiên giá trọn bộ; chưa tính được trọn bộ (chưa có giá/số chương) thì hiện giá mỗi chương
-const priceLine = n => fullPriceOf(n) > 0 ? vnd(fullPriceOf(n)) + ' trọn bộ' : (Number(n.price) > 0 ? vnd(n.price) + '/chương' : 'Liên hệ');
-const nCard = n => `<a class="tile" href="#/truyen/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${totalCh(n) ? totalCh(n) + ' chương' : 'Đang cập nhật'} · <span class="pr">${priceLine(n)}</span></small></a>`;
+const priceLine = n => isSellable(n) ? vnd(fullPriceOf(n)) + ' trọn bộ' : (Number(n.price) > 0 ? vnd(n.price) + '/' + L(n).unit : 'Liên hệ');
+const nCard = n => `<a class="tile" href="#/${L(n).sec}/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${kindOf(n) === 'movie' && (n.movie_type === 'single' || (totalCh(n) && !isSeries(n))) ? 'Phim lẻ' : !totalCh(n) ? 'Đang cập nhật' : totalCh(n) + ' ' + L(n).unit} · <span class="pr">${priceLine(n)}</span></small></a>`;
 
 function renderProducts() {
     const { products } = DATA;
@@ -148,7 +148,6 @@ function authorList(k) {
 }
 const authorOptions = k => `<option value="">${KIND[k].authorAll}</option>${authorList(k).map(a => `<option value="${esc(a.key)}" ${NS[k].author === a.key ? 'selected' : ''}>${esc(a.name)} (${a.count})</option>`).join('')}`;
 
-<<<<<<< HEAD
 // Một mục (kệ) trên trang chủ: tiêu đề + thanh công cụ + lưới.
 function shelfHtml(k) {
     const K = KIND[k], p = PFX[k], s = NS[k], items = itemsOf(k);
@@ -159,18 +158,21 @@ function shelfHtml(k) {
        <div class="filters" id="${p}filters" role="group" aria-label="Lọc theo trạng thái"></div>
        <div class="dirs" role="group" aria-label="Chiều sắp xếp"><button class="chip" id="${p}down" data-dir="1" type="button" aria-pressed="${s.dir > 0}" aria-label="Sắp từ trên xuống dưới (A→Z, ít→nhiều, thấp→cao)" title="Từ trên xuống: A→Z, ít→nhiều, thấp→cao">${ic('down')}</button><button class="chip" id="${p}up" data-dir="-1" type="button" aria-pressed="${s.dir < 0}" aria-label="Sắp từ dưới lên trên (Z→A, nhiều→ít, cao→thấp)" title="Từ dưới lên: Z→A, nhiều→ít, cao→thấp">${ic('up')}</button></div></div>
        <div class="ngrid" id="${p}grid"></div>` : `<div class="empty">Chưa có ${K.word} nào.</div>`}</section>`;
-=======
-function renderNovels() {
-    if (!$('#ngrid')) return; // chưa có truyện nào
-    const q = fold(nQuery).trim();
-    const list = sortNovels(DATA.novels.filter(n =>
-        (!nAuthor || authorKey(n) === nAuthor) && (nStatus === 'all' || (nStatus === 'done') === isDone(n)) && (!q || fold(n.title + ' ' + (n.author || '')).includes(q))));
-    $('#nfilters').innerHTML = [['all', 'Tất cả'], ['ongoing', 'Đang tiếp tục'], ['done', 'Đã kết thúc']]
-        .map(([k, l]) => `<button class="chip" data-st="${k}" aria-pressed="${nStatus === k}">${l}</button>`).join('');
-    $('#ndown').setAttribute('aria-pressed', nDir > 0);
-    $('#nup').setAttribute('aria-pressed', nDir < 0);
-    $('#ngrid').innerHTML = list.map(n => nCard(n)).join('') || '<div class="empty">Không tìm thấy truyện nào.</div>';
 }
+
+function renderNovels(k) {
+    const p = PFX[k], s = NS[k];
+    if (!$('#' + p + 'grid')) return; // chưa có mục nào
+    const q = fold(s.q).trim();
+    const list = sortNovels(itemsOf(k).filter(n =>
+        (!s.author || authorKey(n) === s.author) && (s.st === 'all' || (s.st === 'done') === isDone(n)) && (!q || fold(n.title + ' ' + (n.author || '')).includes(q))), s);
+    $('#' + p + 'filters').innerHTML = [['all', 'Tất cả'], ['ongoing', 'Đang tiếp tục'], ['done', 'Đã kết thúc']]
+        .map(([v, l]) => `<button class="chip" data-st="${v}" aria-pressed="${s.st === v}">${l}</button>`).join('');
+    $('#' + p + 'down').setAttribute('aria-pressed', s.dir > 0);
+    $('#' + p + 'up').setAttribute('aria-pressed', s.dir < 0);
+    $('#' + p + 'grid').innerHTML = list.map(n => nCard(n)).join('') || `<div class="empty">Không tìm thấy ${KIND[k].word} nào.</div>`;
+}
+const renderShelves = () => { renderNovels('novel'); renderNovels('movie'); };
 
 /* ===== Combo đồng tác giả: banner xếp chéo như bìa sách ở banner đầu trang, bấm vào mở cửa sổ chi tiết ===== */
 // Chỉ hiện combo có ít nhất 2 truyện của tác giả đó (tự gom theo tên tác giả) và đã nhập giá combo
@@ -196,22 +198,6 @@ function fanInner() {
     const ghost = n > 3 ? comboCard(all[(fanI + 3) % n], 'g').replace('<a class="cb', '<a tabindex="-1" aria-hidden="true" class="cb') : '';
     return ghost + L.map((x, i) => comboCard(x, pos[i])).join('') + nav;
 }
-<<<<<<< HEAD
-=======
-// Chùm 3 bìa xòe quạt bên phải banner. Từ 4 combo trở lên: tự trượt từng bìa (cửa sổ 3 bìa, xoay vòng) + nút ‹ › + chấm chọn
-let fanI = 0, fanTimer = null;
-function fanInner() {
-    const all = comboList(), n = all.length, k = Math.min(3, n);
-    const L = Array.from({ length: k }, (_, i) => all[(fanI + i) % n]);
-    const pos = { 1: ['c'], 2: ['l', 'r'], 3: ['l', 'c', 'r'] }[k] || [];
-    const nav = n > 3 ? `<div class="fnav"><button type="button" data-fan="-1" aria-label="Combo trước">‹</button>
-      <span class="fdots">${all.map((_, i) => `<button type="button" class="fd" data-fan-to="${i}" aria-label="Combo ${i + 1}" aria-current="${i === fanI}"></button>`).join('')}</span>
-      <button type="button" data-fan="1" aria-label="Combo sau">›</button></div>` : '';
-    // Bìa thứ 4 mờ ló ra bên phải, báo cho khách biết còn combo khác (bấm vào = sang combo kế)
-    const ghost = n > 3 ? comboCard(all[(fanI + 3) % n], 'g').replace('<a class="cb', '<a tabindex="-1" aria-hidden="true" class="cb') : '';
-    return ghost + L.map((x, i) => comboCard(x, pos[i])).join('') + nav;
-}
->>>>>>> 428e6d034d7e4b34fa4e8d288fbbd3dc1590d15b
 function comboFan() {
     return comboList().length ? `<div class="art fanbox" id="fanbox" data-n="${Math.min(3, comboList().length)}" role="group" aria-label="Combo đồng tác giả">${fanInner()}</div>` : '';
 }
@@ -263,13 +249,9 @@ function renderPage() {
        <div class="chips"><a href="#/sp"><b>${products.length}</b>phần mềm</a><a href="#/truyen"><b>${novels.length}</b>truyện dịch</a><a href="#/phim"><b>${movies.length}</b>phim</a></div></div>${art}</div></section>
      <div class="wrap ${rendered ? '' : 'view'}">
      <section class="shelf" id="sp" style="margin-top:0"><div class="sh"><h2>Phần mềm</h2><div class="filters" id="filters" role="group" aria-label="Lọc theo danh mục"></div></div><div class="pgrid" id="pgrid"></div></section>
-     <section class="shelf" id="truyen"><div class="sh"><h2>Truyện dịch</h2></div>
-      ${novels.length ? `<div class="ntools"><input id="nq" type="search" placeholder="Tìm tên truyện, tác giả…" value="${esc(nQuery)}" aria-label="Tìm truyện" autocomplete="off">
-       <select id="nsort" aria-label="Sắp xếp truyện">${SORTS.map(([k, l]) => `<option value="${k}" ${nSort === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-       <select id="nauthor" aria-label="Lọc theo tác giả">${authorOptions()}</select>
-       <div class="dirs" role="group" aria-label="Chiều sắp xếp"><button class="chip" id="ndown" type="button" aria-pressed="${nDir > 0}" aria-label="Sắp từ trên xuống dưới (A→Z, ít→nhiều, thấp→cao)" title="Từ trên xuống: A→Z, ít→nhiều, thấp→cao">${ic('down')}</button><button class="chip" id="nup" type="button" aria-pressed="${nDir < 0}" aria-label="Sắp từ dưới lên trên (Z→A, nhiều→ít, cao→thấp)" title="Từ dưới lên: Z→A, nhiều→ít, cao→thấp">${ic('up')}</button></div></div>
-       <div class="ngrid" id="ngrid"></div>` : '<div class="empty">Chưa có truyện nào.</div>'}</section>
-     <footer>${links ? `Liên hệ mua truyện: ${links} · ` : ''}<a href="admin.html">Quản trị</a></footer></div>`;
+     ${shelfHtml('novel')}
+     ${shelfHtml('movie')}
+     <footer>${links ? `Liên hệ mua: ${links} · ` : ''}<a href="admin.html">Quản trị</a></footer></div>`;
     applyPageBg(site);
     renderProducts();
     renderShelves();
@@ -413,7 +395,7 @@ function comboHtml(c) {
       <div class="meta"><span><b>${st.items.length}</b> ${wordOf(st.items)}</span><span>Mua trọn bộ cả ${st.items.length} ${wordOf(st.items)}</span></div></div></div>
      <div class="deal"><div><span class="lbl">Giá combo · ${st.items.length} ${wordOf(st.items)} trọn bộ</span><b>${vnd(st.price)}</b>${st.pct ? `<s>${vnd(st.retail)}</s>` : ''}</div>${st.pct ? `<span class="save">Rẻ hơn ${st.pct}%</span>` : ''}
       <button class="btn nv" type="button" id="ccadd">${ic('cart')}Thêm combo vào giỏ</button><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>
-     <h3 class="h">Gồm các truyện</h3><div class="ngrid cgrid">${st.items.map(n => nCard(n)).join('')}</div>`;
+     <h3 class="h">Gồm các ${wordOf(st.items)}</h3><div class="ngrid cgrid">${st.items.map(n => nCard(n)).join('')}</div>`;
 }
 
 async function openDetail(sec, id) {
