@@ -1,7 +1,7 @@
 // Trang công khai (chỉ đọc): một trang cuộn gồm Banner → Phần mềm → Truyện dịch.
 // Bấm vào một mục sẽ mở cửa sổ chi tiết (địa chỉ #/sp/<id> hoặc #/truyen/<id>, mở thẳng được).
 import { getProducts, getProduct, getNovels, getNovel, getCombos, getSettings, onData } from './db.js';
-import { esc, safe, imgList, fullDeal, comboStats, fullPriceOf } from './util.js';
+import { esc, safe, imgList, fullDeal, comboStats, fullPriceOf, isSellable } from './util.js';
 import { CONTACTS } from './config.js';
 import { getCart, inCart, addItem, removeItem, clearCart, onCartChange } from './cart.js';
 import './applink.js'; // bấm link liên hệ thì mở thẳng app (Zalo, Facebook…)
@@ -55,6 +55,18 @@ const cover = n => {
     return u ? `<div class="cover has" style="background-image:url('${cssUrl(u)}')" role="img" aria-label="${esc(n.title)}"></div>`
         : `<div class="cover" style="background:${grad(hueOf(n.title))}"><span>${esc(n.title)}</span></div>`;
 };
+// Truyện dịch và Phim dùng chung một bảng dữ liệu (cột kind); chỉ khác nhãn chữ
+const KIND = {
+    novel: { sec: 'truyen', title: 'Truyện dịch', word: 'truyện', unit: 'chương', vol: 'Quyển', author: 'Tác giả', authorAll: 'Tất cả tác giả' },
+    movie: { sec: 'phim', title: 'Phim', word: 'phim', unit: 'tập', vol: 'Phần', author: 'Đạo diễn', authorAll: 'Tất cả đạo diễn' },
+};
+const kindOf = n => n && n.kind === 'movie' ? 'movie' : 'novel';
+const L = n => KIND[kindOf(n)];
+// Phim bộ / phim lẻ: theo lựa chọn trong admin (movie_type); chưa chọn thì tự nhận theo số tập (nhiều hơn 1 tập = phim bộ)
+const isSeries = n => n.movie_type === 'series' ? true : n.movie_type === 'single' ? false : totalCh(n) > 1;
+const itemsOf = k => DATA.novels.filter(n => kindOf(n) === k);
+// Từ gọi chung cho một nhóm mục (combo có thể gồm cả truyện lẫn phim)
+const wordOf = items => items.length && items.every(n => kindOf(n) === 'movie') ? 'phim' : items.some(n => kindOf(n) === 'movie') ? 'mục' : 'truyện';
 const totalCh = n => (n.volumes || []).reduce((m, v) => Math.max(m, v.to), 0);
 const stTag = s => s === 'done' ? '<span class="tag ok"><i></i>Đã kết thúc</span>' : '<span class="tag warn"><i></i>Đang tiếp tục</span>';
 const contacts = () => CONTACTS.filter(c => c.url);
@@ -72,6 +84,8 @@ function platform(u) {
 }
 
 /* ===== Dữ liệu ===== */
+// Truyện đặt giá 0đ (is_free): coi như giá mỗi chương và giá trọn bộ đều bằng 0, còn lại xử lý như hàng bình thường (giỏ, combo…)
+const normNovel = n => n && n.is_free ? { ...n, price: 0, full_price: 0 } : n;
 let DATA = { products: [], novels: [], combos: [], site: {} };
 // Chế độ xem trước (trang admin → Trang chủ nhúng trang này trong khung và gửi cài đặt đang soạn qua postMessage)
 const PREVIEW = new URLSearchParams(location.search).has('preview');
@@ -80,7 +94,11 @@ let curCat = 'all';
 async function load() {
     // Chưa chạy update_v5.sql (chưa có bảng combos) thì bỏ qua, web vẫn chạy bình thường
     const [products, novels, site, combos] = await Promise.all([getProducts(), getNovels(), getSettings().catch(() => ({})), getCombos().catch(() => [])]);
+<<<<<<< HEAD
+    DATA = { products, novels: novels.map(normNovel), combos: combos || [], site: previewSite || site || {} };
+=======
     DATA = { products, novels, combos: combos || [], site: previewSite || site || {} };
+>>>>>>> 428e6d034d7e4b34fa4e8d288fbbd3dc1590d15b
 }
 
 /* ===== Trang chính ===== */
@@ -88,8 +106,13 @@ const pCard = p => `<a class="pcard" href="#/sp/${esc(p.id)}"><div class="thumb"
   <h3>${esc(p.name)}</h3><p>${esc(p.short)}</p><div class="pm"><span class="tag">${esc(p.cat)}</span>${p.version ? `<span class="ver">v${esc(p.version)}</span>` : ''}</div></a>`;
 // full = true (trong cửa sổ combo): hiện giá mua trọn bộ thay vì giá mỗi chương
 // Giá hiện trên thẻ: ưu tiên giá trọn bộ; chưa tính được trọn bộ (chưa có giá/số chương) thì hiện giá mỗi chương
+<<<<<<< HEAD
+const priceLine = n => isSellable(n) ? vnd(fullPriceOf(n)) + ' trọn bộ' : (Number(n.price) > 0 ? vnd(n.price) + '/' + L(n).unit : 'Liên hệ');
+const nCard = n => `<a class="tile" href="#/${L(n).sec}/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${kindOf(n) === 'movie' && (n.movie_type === 'single' || (totalCh(n) && !isSeries(n))) ? 'Phim lẻ' : !totalCh(n) ? 'Đang cập nhật' : totalCh(n) + ' ' + L(n).unit} · <span class="pr">${priceLine(n)}</span></small></a>`;
+=======
 const priceLine = n => fullPriceOf(n) > 0 ? vnd(fullPriceOf(n)) + ' trọn bộ' : (Number(n.price) > 0 ? vnd(n.price) + '/chương' : 'Liên hệ');
 const nCard = n => `<a class="tile" href="#/truyen/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${totalCh(n) ? totalCh(n) + ' chương' : 'Đang cập nhật'} · <span class="pr">${priceLine(n)}</span></small></a>`;
+>>>>>>> 428e6d034d7e4b34fa4e8d288fbbd3dc1590d15b
 
 function renderProducts() {
     const { products } = DATA;
@@ -101,32 +124,51 @@ function renderProducts() {
     $('#pgrid').innerHTML = list.map(pCard).join('') || '<div class="empty">Chưa có sản phẩm nào.</div>';
 }
 
-/* ===== Truyện dịch: tìm kiếm, lọc trạng thái, sắp xếp ===== */
-let nQuery = '', nStatus = 'all', nSort = 'default', nDir = 1, nAuthor = ''; // nAuthor: '' = mọi tác giả, còn lại = authorKey tác giả đang lọc; nDir: 1 = xuôi (trên xuống), -1 = ngược (dưới lên)
-const SORTS = [['default', 'Thứ tự mặc định'], ['title', 'Tên (A–Z)'], ['len', 'Độ dài (số chương)'], ['price', 'Giá / chương']];
+/* ===== Truyện dịch / Phim: tìm kiếm, lọc trạng thái, sắp xếp (mỗi mục giữ trạng thái lọc riêng) ===== */
+// q: từ khóa; st: trạng thái; author: '' = mọi tác giả/đạo diễn, còn lại = authorKey đang lọc; dir: 1 = xuôi (trên xuống), -1 = ngược (dưới lên)
+const NS = { novel: { q: '', st: 'all', sort: 'default', dir: 1, author: '' }, movie: { q: '', st: 'all', sort: 'default', dir: 1, author: '' } };
+const PFX = { novel: 'n', movie: 'm' }; // tiền tố id các ô trong thanh công cụ (nq, nsort, nauthor… / mq, msort, mauthor…)
+const sortsOf = k => [['default', 'Thứ tự mặc định'], ['title', 'Tên (A–Z)'], ['len', `Độ dài (số ${KIND[k].unit})`], ['price', `Giá / ${KIND[k].unit}`],
+    ...(k === 'movie' ? [['series', 'Phim bộ trước'], ['single', 'Phim lẻ trước']] : [])];
 // Bỏ dấu + viết thường để gõ "tu tien" vẫn tìm ra "Tu Tiên"
-const fold = t => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
+const fold = t => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').toLowerCase();
 const byText = (a, b) => String(a || '').localeCompare(String(b || ''), 'vi');
 const isDone = n => n.status === 'done';
 const authorKey = n => fold(n.author).trim().replace(/\s+/g, ' ');
 
-function sortNovels(list) {
+function sortNovels(list, s) {
     const l = list.slice(); // sort ổn định: bằng nhau thì giữ thứ tự admin đã kéo thả
-    if (nSort === 'title') l.sort((a, b) => nDir * byText(a.title, b.title));
-    else if (nSort === 'len') l.sort((a, b) => nDir * (totalCh(a) - totalCh(b)) || byText(a.title, b.title));
-    else if (nSort === 'price') l.sort((a, b) => nDir * ((Number(a.price) || 0) - (Number(b.price) || 0)) || byText(a.title, b.title));
-    else if (nDir < 0) l.reverse();
+    if (s.sort === 'title') l.sort((a, b) => s.dir * byText(a.title, b.title));
+    else if (s.sort === 'len') l.sort((a, b) => s.dir * (totalCh(a) - totalCh(b)) || byText(a.title, b.title));
+    else if (s.sort === 'price') l.sort((a, b) => s.dir * ((Number(a.price) || 0) - (Number(b.price) || 0)) || byText(a.title, b.title));
+    else if (s.sort === 'series' || s.sort === 'single') { // gom nhóm phim bộ / phim lẻ, trong nhóm theo thứ tự mặc định
+        const first = s.sort === 'series' ? 1 : 0;
+        l.sort((a, b) => ((isSeries(b) ? 1 : 0) === first) - ((isSeries(a) ? 1 : 0) === first));
+        if (s.dir < 0) l.reverse();
+    }
+    else if (s.dir < 0) l.reverse();
     return l;
 }
-
-// Danh sách tác giả (đã bỏ trùng, A → Z) kèm số truyện, cho ô chọn tác giả
-function authorList() {
+// Danh sách tác giả (đã bỏ trùng, A → Z) kèm số mục, cho ô chọn tác giả
+function authorList(k) {
     const m = new Map();
-    for (const n of DATA.novels) { const k = authorKey(n); if (!k) continue; if (!m.has(k)) m.set(k, { key: k, name: String(n.author).trim(), count: 0 }); m.get(k).count++; }
+    for (const n of itemsOf(k)) { const key = authorKey(n); if (!key) continue; if (!m.has(key)) m.set(key, { key, name: String(n.author).trim(), count: 0 }); m.get(key).count++; }
     return [...m.values()].sort((a, b) => byText(a.name, b.name));
 }
-const authorOptions = () => `<option value="">Tất cả tác giả</option>${authorList().map(a => `<option value="${esc(a.key)}" ${nAuthor === a.key ? 'selected' : ''}>${esc(a.name)} (${a.count})</option>`).join('')}`;
+const authorOptions = k => `<option value="">${KIND[k].authorAll}</option>${authorList(k).map(a => `<option value="${esc(a.key)}" ${NS[k].author === a.key ? 'selected' : ''}>${esc(a.name)} (${a.count})</option>`).join('')}`;
 
+<<<<<<< HEAD
+// Một mục (kệ) trên trang chủ: tiêu đề + thanh công cụ + lưới.
+function shelfHtml(k) {
+    const K = KIND[k], p = PFX[k], s = NS[k], items = itemsOf(k);
+    return `<section class="shelf" id="${K.sec}"><div class="sh"><h2>${K.title}</h2></div>
+      ${items.length ? `<div class="ntools" data-k="${k}"><input id="${p}q" type="search" placeholder="Tìm tên ${K.word}, ${K.author.toLowerCase()}…" value="${esc(s.q)}" aria-label="Tìm ${K.word}" autocomplete="off">
+       <select id="${p}sort" data-f="sort" aria-label="Sắp xếp ${K.word}">${sortsOf(k).map(([v, l]) => `<option value="${v}" ${s.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+       <select id="${p}author" data-f="author" aria-label="Lọc theo ${K.author.toLowerCase()}">${authorOptions(k)}</select>
+       <div class="filters" id="${p}filters" role="group" aria-label="Lọc theo trạng thái"></div>
+       <div class="dirs" role="group" aria-label="Chiều sắp xếp"><button class="chip" id="${p}down" data-dir="1" type="button" aria-pressed="${s.dir > 0}" aria-label="Sắp từ trên xuống dưới (A→Z, ít→nhiều, thấp→cao)" title="Từ trên xuống: A→Z, ít→nhiều, thấp→cao">${ic('down')}</button><button class="chip" id="${p}up" data-dir="-1" type="button" aria-pressed="${s.dir < 0}" aria-label="Sắp từ dưới lên trên (Z→A, nhiều→ít, cao→thấp)" title="Từ dưới lên: Z→A, nhiều→ít, cao→thấp">${ic('up')}</button></div></div>
+       <div class="ngrid" id="${p}grid"></div>` : `<div class="empty">Chưa có ${K.word} nào.</div>`}</section>`;
+=======
 function renderNovels() {
     if (!$('#ngrid')) return; // chưa có truyện nào
     const q = fold(nQuery).trim();
@@ -137,18 +179,33 @@ function renderNovels() {
     $('#ndown').setAttribute('aria-pressed', nDir > 0);
     $('#nup').setAttribute('aria-pressed', nDir < 0);
     $('#ngrid').innerHTML = list.map(n => nCard(n)).join('') || '<div class="empty">Không tìm thấy truyện nào.</div>';
+>>>>>>> 428e6d034d7e4b34fa4e8d288fbbd3dc1590d15b
 }
+
+function renderNovels(k) {
+    const p = PFX[k], s = NS[k];
+    if (!$('#' + p + 'grid')) return; // chưa có mục nào
+    const q = fold(s.q).trim();
+    const list = sortNovels(itemsOf(k).filter(n =>
+        (!s.author || authorKey(n) === s.author) && (s.st === 'all' || (s.st === 'done') === isDone(n)) && (!q || fold(n.title + ' ' + (n.author || '')).includes(q))), s);
+    $('#' + p + 'filters').innerHTML = [['all', 'Tất cả'], ['ongoing', 'Đang tiếp tục'], ['done', 'Đã kết thúc']]
+        .map(([v, l]) => `<button class="chip" data-st="${v}" aria-pressed="${s.st === v}">${l}</button>`).join('');
+    $('#' + p + 'down').setAttribute('aria-pressed', s.dir > 0);
+    $('#' + p + 'up').setAttribute('aria-pressed', s.dir < 0);
+    $('#' + p + 'grid').innerHTML = list.map(n => nCard(n)).join('') || `<div class="empty">Không tìm thấy ${KIND[k].word} nào.</div>`;
+}
+const renderShelves = () => { renderNovels('novel'); renderNovels('movie'); };
 
 /* ===== Combo đồng tác giả: banner xếp chéo như bìa sách ở banner đầu trang, bấm vào mở cửa sổ chi tiết ===== */
 // Chỉ hiện combo có ít nhất 2 truyện của tác giả đó (tự gom theo tên tác giả) và đã nhập giá combo
-const comboList = () => DATA.combos.map(c => ({ c, st: comboStats(c, DATA.novels) })).filter(x => x.st.items.length >= 2 && x.st.price > 0);
+const comboList = () => DATA.combos.map(c => ({ c, st: comboStats(c, DATA.novels) })).filter(x => x.st.items.length >= 2);
 const ribbon = pct => pct > 0 ? `<span class="rib" aria-label="Giảm ${pct}%">-${pct}%</span>` : '';
 // Bìa combo; pos = l | c | r (vị trí trong chùm xòe quạt)
 function comboCard({ c, st }, pos) {
     const u = c.cover && safe(c.cover) !== '#' ? c.cover : '';
-    return `<a class="cb fan ${pos}" href="#/combo/${esc(c.id)}" aria-label="Combo ${esc(c.author)}: ${st.items.length} truyện, ${vnd(st.price)}">
+    return `<a class="cb fan ${pos}" href="#/combo/${esc(c.id)}" aria-label="Combo ${esc(c.author)}: ${st.items.length} ${wordOf(st.items)}, ${vnd(st.price)}">
       <div class="cbi ${u ? 'has' : ''}" style="${u ? `background-image:url('${cssUrl(u)}')` : `background:${grad(hueOf(c.author))}`}"></div>${ribbon(st.pct)}
-      <div class="cbn"><b>${esc(c.author)}</b><small>${st.items.length} truyện · ${vnd(st.price)}</small></div></a>`;
+      <div class="cbn"><b>${esc(c.author)}</b><small>${st.items.length} ${wordOf(st.items)} · ${vnd(st.price)}</small></div></a>`;
 }
 // Chùm 3 bìa xòe quạt bên phải banner. Từ 4 combo trở lên: tự trượt từng bìa (cửa sổ 3 bìa, xoay vòng) + nút ‹ › + chấm chọn
 let fanI = 0, fanTimer = null;
@@ -163,6 +220,22 @@ function fanInner() {
     const ghost = n > 3 ? comboCard(all[(fanI + 3) % n], 'g').replace('<a class="cb', '<a tabindex="-1" aria-hidden="true" class="cb') : '';
     return ghost + L.map((x, i) => comboCard(x, pos[i])).join('') + nav;
 }
+<<<<<<< HEAD
+=======
+// Chùm 3 bìa xòe quạt bên phải banner. Từ 4 combo trở lên: tự trượt từng bìa (cửa sổ 3 bìa, xoay vòng) + nút ‹ › + chấm chọn
+let fanI = 0, fanTimer = null;
+function fanInner() {
+    const all = comboList(), n = all.length, k = Math.min(3, n);
+    const L = Array.from({ length: k }, (_, i) => all[(fanI + i) % n]);
+    const pos = { 1: ['c'], 2: ['l', 'r'], 3: ['l', 'c', 'r'] }[k] || [];
+    const nav = n > 3 ? `<div class="fnav"><button type="button" data-fan="-1" aria-label="Combo trước">‹</button>
+      <span class="fdots">${all.map((_, i) => `<button type="button" class="fd" data-fan-to="${i}" aria-label="Combo ${i + 1}" aria-current="${i === fanI}"></button>`).join('')}</span>
+      <button type="button" data-fan="1" aria-label="Combo sau">›</button></div>` : '';
+    // Bìa thứ 4 mờ ló ra bên phải, báo cho khách biết còn combo khác (bấm vào = sang combo kế)
+    const ghost = n > 3 ? comboCard(all[(fanI + 3) % n], 'g').replace('<a class="cb', '<a tabindex="-1" aria-hidden="true" class="cb') : '';
+    return ghost + L.map((x, i) => comboCard(x, pos[i])).join('') + nav;
+}
+>>>>>>> 428e6d034d7e4b34fa4e8d288fbbd3dc1590d15b
 function comboFan() {
     return comboList().length ? `<div class="art fanbox" id="fanbox" data-n="${Math.min(3, comboList().length)}" role="group" aria-label="Combo đồng tác giả">${fanInner()}</div>` : '';
 }
@@ -196,7 +269,8 @@ function applyPageBg(site) {
 }
 
 function renderPage() {
-    const { products, novels, site } = DATA;
+    const { products, site } = DATA;
+    const novels = itemsOf('novel'), movies = itemsOf('movie');
     const name = esc(site.name || '[Tên bạn]');
     const tagline = esc(site.tagline || 'Một thư viện nhỏ: những sản phẩm mình tự làm, và những bộ truyện mình dịch — liên hệ để mua trực tiếp.');
     const bg = site.banner && safe(site.banner) !== '#' ? site.banner : '';
@@ -210,9 +284,14 @@ function renderPage() {
     const bgVars = `--bgblur:${nm(site.bgblur, 0, 12, 0)}px;--dim:${nm(site.bgdim, 0, 120, 100) / 100};--pop:${nm(site.bgpop, 0, 100, 0) / 100}`;
     $('#page').innerHTML = `<section class="ban ${rendered ? '' : 'view'} ${bg ? 'has-img' : ''}" style="${bgVars}">${bg ? `<div class="ban-bg" style="background-image:url('${cssUrl(bg)}')"></div>` : ''}
       <div class="ban-in"><div><p class="eyebrow">Xin chào</p><h1>Mình là ${name},<br>làm phần mềm &amp; dịch truyện.</h1><p class="lead">${tagline}</p>
-       <div class="chips"><a href="#/sp"><b>${products.length}</b>phần mềm</a><a href="#/truyen"><b>${novels.length}</b>truyện dịch</a></div></div>${art}</div></section>
+       <div class="chips"><a href="#/sp"><b>${products.length}</b>phần mềm</a><a href="#/truyen"><b>${novels.length}</b>truyện dịch</a><a href="#/phim"><b>${movies.length}</b>phim</a></div></div>${art}</div></section>
      <div class="wrap ${rendered ? '' : 'view'}">
      <section class="shelf" id="sp" style="margin-top:0"><div class="sh"><h2>Phần mềm</h2><div class="filters" id="filters" role="group" aria-label="Lọc theo danh mục"></div></div><div class="pgrid" id="pgrid"></div></section>
+<<<<<<< HEAD
+     ${shelfHtml('novel')}
+     ${shelfHtml('movie')}
+     <footer>${links ? `Liên hệ mua: ${links} · ` : ''}<a href="admin.html">Quản trị</a></footer></div>`;
+=======
      <section class="shelf" id="truyen"><div class="sh"><h2>Truyện dịch</h2></div>
       ${novels.length ? `<div class="ntools"><input id="nq" type="search" placeholder="Tìm tên truyện, tác giả…" value="${esc(nQuery)}" aria-label="Tìm truyện" autocomplete="off">
        <select id="nsort" aria-label="Sắp xếp truyện">${SORTS.map(([k, l]) => `<option value="${k}" ${nSort === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -221,27 +300,28 @@ function renderPage() {
        <div class="dirs" role="group" aria-label="Chiều sắp xếp"><button class="chip" id="ndown" type="button" aria-pressed="${nDir > 0}" aria-label="Sắp từ trên xuống dưới (A→Z, ít→nhiều, thấp→cao)" title="Từ trên xuống: A→Z, ít→nhiều, thấp→cao">${ic('down')}</button><button class="chip" id="nup" type="button" aria-pressed="${nDir < 0}" aria-label="Sắp từ dưới lên trên (Z→A, nhiều→ít, cao→thấp)" title="Từ dưới lên: Z→A, nhiều→ít, cao→thấp">${ic('up')}</button></div></div>
        <div class="ngrid" id="ngrid"></div>` : '<div class="empty">Chưa có truyện nào.</div>'}</section>
      <footer>${links ? `Liên hệ mua truyện: ${links} · ` : ''}<a href="admin.html">Quản trị</a></footer></div>`;
+>>>>>>> 428e6d034d7e4b34fa4e8d288fbbd3dc1590d15b
     applyPageBg(site);
     renderProducts();
-    renderNovels();
+    renderShelves();
     renderBadge();
     fanStart();
 }
 
 // Bấm nút chọn danh mục (dùng data-cat thay vì onclick để an toàn)
+const kOf = el => { const t = el.closest('[data-k]'); return t ? t.dataset.k : null; };
 document.addEventListener('click', e => {
     const b = e.target.closest('[data-cat]');
     if (b) { curCat = b.dataset.cat; renderProducts(); }
-    const t = e.target.closest('[data-st]');
-    if (t) { nStatus = t.dataset.st; renderNovels(); }
-    if (e.target.closest('#ndown')) { nDir = 1; renderNovels(); }
-    if (e.target.closest('#nup')) { nDir = -1; renderNovels(); }
+    const t = e.target.closest('[data-st]'), d = e.target.closest('[data-dir]');
+    if (t && kOf(t)) { NS[kOf(t)].st = t.dataset.st; renderNovels(kOf(t)); }
+    if (d && kOf(d)) { NS[kOf(d)].dir = +d.dataset.dir; renderNovels(kOf(d)); }
 });
-// Gõ tìm kiếm / đổi cách sắp xếp: chỉ vẽ lại lưới truyện (ô nhập không bị mất con trỏ)
-document.addEventListener('input', e => { if (e.target.id === 'nq') { nQuery = e.target.value; renderNovels(); } });
+// Gõ tìm kiếm / đổi cách sắp xếp: chỉ vẽ lại lưới của mục đó (ô nhập không bị mất con trỏ)
+document.addEventListener('input', e => { const k = e.target.matches && e.target.matches('.ntools input') ? kOf(e.target) : null; if (k) { NS[k].q = e.target.value; renderNovels(k); } });
 document.addEventListener('change', e => {
-    if (e.target.id === 'nsort') { nSort = e.target.value; renderNovels(); }
-    if (e.target.id === 'nauthor') { nAuthor = e.target.value; renderNovels(); }
+    const f = e.target.dataset && e.target.dataset.f, k = f ? kOf(e.target) : null;
+    if (k) { NS[k][f] = e.target.value; renderNovels(k); }
 });
 
 /* ===== Cửa sổ chi tiết ===== */
@@ -286,10 +366,11 @@ const intro = t => t && String(t).trim() ? `<details class="intro"><summary clas
 
 // Ô "Mua toàn tập": giá, giá lẻ gạch ngang và % rẻ hơn. Không nhập giá toàn tập thì không hiện.
 function dealHtml(n, max) {
+    const K = L(n);
     const fp = Number(n.full_price) || 0;
-    if (!(fp > 0)) return '';
-    const d = fullDeal(n.price, max, fp);
-    return `<div class="deal"><div><span class="lbl">Mua toàn tập${max ? ` · ${max} chương` : ''}</span><b>${vnd(fp)}</b>${d.pct ? `<s>${vnd(d.retail)}</s>` : ''}</div>${d.pct ? `<span class="save">Rẻ hơn ${d.pct}%</span>` : ''}${max ? `<button class="btn nv" type="button" id="cfull">${ic('cart')}Thêm toàn tập vào giỏ</button>` : ''}<div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>`;
+    if (!n.is_free && !(fp > 0)) return ''; // không nhập giá toàn tập (và không phải 0đ có chủ ý) thì không hiện ô này
+    const d = fp > 0 ? fullDeal(n.price, max, fp) : { retail: 0, pct: null };
+    return `<div class="deal"><div><span class="lbl">Mua toàn tập${max ? ` · ${max} ${K.unit}` : ''}</span><b>${vnd(fp)}</b>${d.pct ? `<s>${vnd(d.retail)}</s>` : ''}</div>${d.pct ? `<span class="save">Rẻ hơn ${d.pct}%</span>` : ''}${max ? `<button class="btn nv" type="button" id="cfull">${ic('cart')}Thêm toàn tập vào giỏ</button>` : ''}<div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>`;
 }
 
 // Tên quyển hiển thị: "Quyển 1 – Thành phố của thánh ca"
@@ -297,35 +378,36 @@ const volLabel = v => `${v.name}${v.title ? ' – ' + v.title : ''}`;
 
 function novelHtml(n) {
     const bc = backCombo && DATA.combos.find(x => x.id === backCombo);
-    const max = totalCh(n), vols = n.volumes || [];
-    const pickable = vols.length > 1 && Number(n.price) > 0; // truyện chia quyển → cho tick chọn quyển
+    const K = L(n), max = totalCh(n), vols = n.volumes || [];
+    const pickable = vols.length > 1 && (n.is_free || Number(n.price) > 0); // truyện chia quyển → cho tick chọn quyển
     const reviews = (n.reviews || []).map(x => {
         const [i, nm] = platform(x.url);
         return `<a class="rv" href="${esc(safe(x.url))}" target="_blank" rel="noopener"><span class="pi">${ic(i)}</span><div><b>${esc(x.label || nm)}</b><small>${esc(nm)}</small></div><span class="go">${ic('ext')}</span></a>`;
     }).join('');
     return `${bc ? `<a class="btn back" href="#/combo/${esc(bc.id)}">${ic('prev')}Quay lại combo ${esc(bc.author)}</a>` : ''}
      <div class="dh2">${cover(n)}<div>${stTag(n.status)}<h1 id="dt">${esc(n.title)}</h1></div></div>
-     <div class="meta"><span>Tác giả: <b>${esc(n.author || '—')}</b></span><span>${max ? max + ' chương' : 'Đang cập nhật số chương'}</span><span><b>${vnd(n.price)}</b>/chương</span></div>
+     <div class="meta"><span>${K.author}: <b>${esc(n.author || '—')}</b></span>${kindOf(n) === 'movie' ? `<span><b>${isSeries(n) ? 'Phim bộ' : 'Phim lẻ'}</b></span>` : ''}<span>${max ? max + ' ' + K.unit : 'Đang cập nhật số ' + K.unit}</span><span><b>${vnd(n.price)}</b>/${K.unit}</span></div>
      ${dealHtml(n, max)}
      ${intro(n.synopsis)}
-     ${vols.length ? `<h3 class="h">Danh sách quyển</h3><div class="vols"><div class="vrow th"><span>Quyển</span><span>Chương</span><span>Số chương</span><span>Giá trọn quyển</span></div>
-      ${vols.map((v, i) => `<div class="vrow"><b>${pickable ? `<label class="vk"><input type="checkbox" data-vol="${i}" aria-label="Chọn ${esc(v.name)}"><span>${esc(volLabel(v))}</span></label>` : esc(volLabel(v))}</b><span>${v.from} – ${v.to}</span><span>${v.to - v.from + 1} chương</span><span>${vnd((v.to - v.from + 1) * n.price)}</span></div>`).join('')}</div>
-      ${pickable ? `<div class="vpick"><label class="vk"><input type="checkbox" id="vall"><span>Chọn tất cả</span></label><div class="vsum" id="vsum" aria-live="polite">Tick vào các quyển muốn mua</div>
-       <button class="btn nv" type="button" id="vadd" disabled>${ic('cart')}Thêm quyển đã chọn vào giỏ</button><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>` : ''}` : ''}
-     ${max ? `<div class="calc"><h4>${ic('calc')}Tính giá theo chương</h4><div class="in"><label>Từ chương <input type="number" id="c1" min="1" max="${max}" value="1"></label><label>đến <input type="number" id="c2" min="1" max="${max}" value="${max}"></label></div><div class="total" id="tot"></div><div class="btns"><button class="btn nv" type="button" id="cadd">${ic('cart')}Thêm vào giỏ</button></div><div class="cmsg" aria-live="polite"></div></div>` : ''}
+     ${vols.length ? `<h3 class="h">Danh sách ${K.vol.toLowerCase()}</h3><div class="vols"><div class="vrow th"><span>${K.vol}</span><span>${K.unit[0].toUpperCase() + K.unit.slice(1)}</span><span>Số ${K.unit}</span><span>Giá trọn ${K.vol.toLowerCase()}</span></div>
+      ${vols.map((v, i) => `<div class="vrow"><b>${pickable ? `<label class="vk"><input type="checkbox" data-vol="${i}" aria-label="Chọn ${esc(v.name)}"><span>${esc(volLabel(v))}</span></label>` : esc(volLabel(v))}</b><span>${v.from} – ${v.to}</span><span>${v.to - v.from + 1} ${K.unit}</span><span>${vnd((v.to - v.from + 1) * n.price)}</span></div>`).join('')}</div>
+      ${pickable ? `<div class="vpick"><label class="vk"><input type="checkbox" id="vall"><span>Chọn tất cả</span></label><div class="vsum" id="vsum" aria-live="polite">Tick vào các ${K.vol.toLowerCase()} muốn mua</div>
+       <button class="btn nv" type="button" id="vadd" disabled>${ic('cart')}Thêm ${K.vol.toLowerCase()} đã chọn vào giỏ</button><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>` : ''}` : ''}
+     ${max ? `<div class="calc"><h4>${ic('calc')}Tính giá theo ${K.unit}</h4><div class="in"><label>Từ ${K.unit} <input type="number" id="c1" min="1" max="${max}" value="1"></label><label>đến <input type="number" id="c2" min="1" max="${max}" value="${max}"></label></div><div class="total" id="tot"></div><div class="btns"><button class="btn nv" type="button" id="cadd">${ic('cart')}Thêm vào giỏ</button></div><div class="cmsg" aria-live="polite"></div></div>` : ''}
      ${contacts().length ? `<h3 class="h" style="margin-top:0">Liên hệ mua</h3><div class="btns" style="margin-top:0">${contacts().map(c => `<a class="btn nv" href="${esc(safe(c.url))}" data-app target="_blank" rel="noopener">${ic(contactIcon(c.name))}${esc(c.name)}</a>`).join('')}</div>` : ''}
      ${reviews ? `<h3 class="h">Review &amp; đánh giá</h3>${reviews}` : ''}`;
 }
 
 // Tick chọn quyển → hiện số chương + giá → thêm các quyển đã tick vào giỏ
 function initVols(n) {
+    const K = L(n);
     const boxes = [...dlg.querySelectorAll('input[data-vol]')], all = $('#vall'), add = $('#vadd');
     if (!boxes.length) return;
     const vols = n.volumes || [];
     const picked = () => boxes.filter(b => b.checked).map(b => vols[+b.dataset.vol]);
     const sync = () => {
         const p = picked(), k = p.reduce((s, v) => s + v.to - v.from + 1, 0);
-        $('#vsum').innerHTML = p.length ? `Đã chọn <b>${p.length}</b> quyển · ${k} chương · <b>${vnd(k * n.price)}</b>` : 'Tick vào các quyển muốn mua';
+        $('#vsum').innerHTML = p.length ? `Đã chọn <b>${p.length}</b> ${K.vol.toLowerCase()} · ${k} ${K.unit} · <b>${vnd(k * n.price)}</b>` : `Tick vào các ${K.vol.toLowerCase()} muốn mua`;
         add.disabled = !p.length;
         all.checked = p.length === boxes.length;
     };
@@ -336,6 +418,7 @@ function initVols(n) {
 }
 
 function initCalc(n) {
+    const K = L(n);
     const c1 = $('#c1'), c2 = $('#c2'); if (!c1) return;
     let sel = { a: 1, b: 1 };
     $('#cadd').onclick = () => addToCart(n, { mode: 'range', from: sel.a, to: sel.b }, $('#cadd'));
@@ -347,7 +430,7 @@ function initCalc(n) {
         const fp = Number(n.full_price) || 0;
         // Khoảng chương đã chọn đắt hơn mua toàn tập → nhắc người mua
         const nudge = fp > 0 && k * n.price > fp ? `<small class="hint">Mua toàn tập chỉ ${vnd(fp)} — rẻ hơn mua lẻ khoảng này.</small>` : '';
-        $('#tot').innerHTML = `${vnd(k * n.price)}<small>${k} chương · chương ${a} → ${b}</small>${nudge}`;
+        $('#tot').innerHTML = `${vnd(k * n.price)}<small>${k} ${K.unit} · ${K.unit} ${a} → ${b}</small>${nudge}`;
     };
     c1.oninput = c2.oninput = calc;
     calc();
@@ -358,10 +441,14 @@ let backCombo = null; // id combo đang mở khi bấm vào một truyện bên 
 function comboHtml(c) {
     const st = comboStats(c, DATA.novels);
     return `<div class="dh2" style="margin-bottom:8px"><div><span class="tag ok"><i></i>Combo</span><h1 id="dt">${esc(c.author)}</h1>
-      <div class="meta"><span><b>${st.items.length}</b> truyện</span><span>Mua trọn bộ cả ${st.items.length} truyện</span></div></div></div>
-     <div class="deal"><div><span class="lbl">Giá combo · ${st.items.length} truyện trọn bộ</span><b>${vnd(st.price)}</b>${st.pct ? `<s>${vnd(st.retail)}</s>` : ''}</div>${st.pct ? `<span class="save">Rẻ hơn ${st.pct}%</span>` : ''}
+      <div class="meta"><span><b>${st.items.length}</b> ${wordOf(st.items)}</span><span>Mua trọn bộ cả ${st.items.length} ${wordOf(st.items)}</span></div></div></div>
+     <div class="deal"><div><span class="lbl">Giá combo · ${st.items.length} ${wordOf(st.items)} trọn bộ</span><b>${vnd(st.price)}</b>${st.pct ? `<s>${vnd(st.retail)}</s>` : ''}</div>${st.pct ? `<span class="save">Rẻ hơn ${st.pct}%</span>` : ''}
       <button class="btn nv" type="button" id="ccadd">${ic('cart')}Thêm combo vào giỏ</button><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>
+<<<<<<< HEAD
+     <h3 class="h">Gồm các ${wordOf(st.items)}</h3><div class="ngrid cgrid">${st.items.map(n => nCard(n)).join('')}</div>`;
+=======
      <h3 class="h">Gồm các truyện</h3><div class="ngrid cgrid">${st.items.map(n => nCard(n)).join('')}</div>`;
+>>>>>>> 428e6d034d7e4b34fa4e8d288fbbd3dc1590d15b
 }
 
 async function openDetail(sec, id) {
@@ -378,7 +465,7 @@ async function openDetail(sec, id) {
         return;
     }
     const item = (sec === 'sp' ? DATA.products : DATA.novels).find(x => x.id === id)
-        || await (sec === 'sp' ? getProduct(id) : getNovel(id)).catch(() => null);
+        || await (sec === 'sp' ? getProduct(id) : getNovel(id).then(normNovel)).catch(() => null);
     if (!item) return closeDetail(true);
     dlg.innerHTML = `<button class="xbtn" id="x" type="button" aria-label="Đóng">${ic('x')}</button><div class="dc">${sec === 'sp' ? productHtml(item) : novelHtml(item)}</div>`;
     dlg.setAttribute('aria-labelledby', 'dt');
@@ -393,7 +480,7 @@ function closeDetail(clearHash) {
     if (clearHash) history.replaceState(null, '', location.pathname + location.search);
 }
 // Đóng bằng nút, phím Esc hoặc bấm ra ngoài → bỏ phần #/sp/<id> khỏi địa chỉ
-dlg.addEventListener('close', () => { backCombo = null; if (/^#\/(sp|truyen|combo)\/./.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); });
+dlg.addEventListener('close', () => { backCombo = null; if (/^#\/(sp|truyen|phim|combo)\/./.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); });
 dlg.addEventListener('click', e => {
     if (e.target === dlg) dlg.close();
     // Bấm truyện trong cửa sổ combo → nhớ combo đó; bấm truyện từ nơi khác → bỏ nút quay lại
@@ -410,27 +497,27 @@ function cartLines() {
     return getCart().map(it => {
         if (it.mode === 'combo') { // combo tác giả: giá tính lại từ dữ liệu hiện tại; combo bị xóa / còn dưới 2 truyện thì bỏ qua
             const c = DATA.combos.find(x => x.id === it.cid), st = c && comboStats(c, DATA.novels);
-            return st && st.items.length >= 2 && st.price > 0
-                ? { n: { id: it.id, title: `Combo ${c.author}` }, text: `Trọn bộ ${st.items.length} truyện: ${st.items.map(x => x.title).join('; ')}`, price: st.price } : null;
+            return st && st.items.length >= 2
+                ? { n: { id: it.id, title: `Combo ${c.author}` }, text: `Trọn bộ ${st.items.length} ${wordOf(st.items)}: ${st.items.map(x => x.title).join('; ')}`, price: st.price } : null;
         }
         const n = DATA.novels.find(x => x.id === it.id), max = n && totalCh(n);
         if (!n || !max) return null;
         if (it.mode === 'full') {
             const fp = Number(n.full_price) || 0;
-            return fp > 0 ? { n, text: `Trọn bộ (${max} chương)`, price: fp } : null;
+            return fp > 0 || n.is_free ? { n, text: `Trọn bộ (${max} ${L(n).unit})`, price: fp } : null;
         }
         if (it.mode === 'vols') {
             const p = (n.volumes || []).filter(v => it.vols.some(([f, t]) => f === v.from && t === v.to)); // quyển đã bị sửa/xóa thì bỏ qua
             if (!p.length) return null;
             const k = p.reduce((s, v) => s + v.to - v.from + 1, 0);
-            return { n, text: `${p.length} quyển: ${p.map(volLabel).join('; ')} (${k} chương)`, price: k * n.price };
+            return { n, text: `${p.length} ${L(n).vol.toLowerCase()}: ${p.map(volLabel).join('; ')} (${k} ${L(n).unit})`, price: k * n.price };
         }
         const a = Math.min(it.from, max), b = Math.min(it.to, max), k = b - a + 1;
-        return { n, text: `Chương ${a} → ${b} (${k} chương)`, price: k * n.price };
+        return { n, text: `${L(n).unit[0].toUpperCase() + L(n).unit.slice(1)} ${a} → ${b} (${k} ${L(n).unit})`, price: k * n.price };
     }).filter(Boolean);
 }
 const cartTotal = lines => lines.reduce((s, l) => s + l.price, 0);
-const orderText = lines => `Chào bạn, mình muốn mua truyện:\n${lines.map((l, i) => `${i + 1}. ${l.n.title} — ${l.text}: ${vnd(l.price)}`).join('\n')}\nTổng cộng: ${vnd(cartTotal(lines))}`;
+const orderText = lines => `Chào bạn, mình muốn mua:\n${lines.map((l, i) => `${i + 1}. ${l.n.title} — ${l.text}: ${vnd(l.price)}`).join('\n')}\nTổng cộng: ${vnd(cartTotal(lines))}`;
 
 function renderBadge() {
     const n = cartLines().length;
@@ -441,7 +528,7 @@ function renderBadge() {
 function renderCart() {
     const lines = cartLines();
     const body = !lines.length
-        ? '<div class="empty">Chưa có truyện nào trong giỏ.<br><small>Mở một truyện rồi bấm “Thêm vào giỏ”.</small></div>'
+        ? '<div class="empty">Chưa có mục nào trong giỏ.<br><small>Mở một truyện hoặc phim rồi bấm “Thêm vào giỏ”.</small></div>'
         : `${lines.map(l => `<div class="cline"><div><b>${esc(l.n.title)}</b><small>${esc(l.text)}</small></div><span class="cp">${vnd(l.price)}</span>
             <button class="iconbtn" type="button" data-cdel="${esc(l.n.id)}" aria-label="Bỏ “${esc(l.n.title)}” khỏi giỏ">${ic('x')}</button></div>`).join('')}
           <div class="ctotal"><span>Tổng cộng</span><b>${vnd(cartTotal(lines))}</b></div>
@@ -500,10 +587,10 @@ async function route() {
         }
         renderPage(); rendered = true;
     }
-    const m = location.hash.match(/^#\/(sp|truyen|combo)\/(.+)$/);
+    const m = location.hash.match(/^#\/(sp|truyen|phim|combo)\/(.+)$/);
     if (m) return openDetail(m[1], decodeURIComponent(m[2]));
     closeDetail(false);
-    const s = location.hash.match(/^#\/(sp|truyen)$/);   // liên kết cũ #/sp, #/truyen → cuộn tới mục
+    const s = location.hash.match(/^#\/(sp|truyen|phim)$/);   // liên kết cũ #/sp, #/truyen → cuộn tới mục
     if (s) document.getElementById(s[1])?.scrollIntoView({ behavior: 'smooth' });
 }
 if (PREVIEW) {

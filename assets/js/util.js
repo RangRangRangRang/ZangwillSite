@@ -34,16 +34,19 @@ export const authorKey = a => fold(typeof a === 'object' && a ? a.author : a).tr
 // Tổng số chương = chương cuối của quyển cuối
 export const totalChapters = n => (n.volumes || []).reduce((m, v) => Math.max(m, v.to), 0);
 // Giá mua trọn bộ của một truyện: dùng giá toàn tập nếu có, không thì giá mỗi chương × số chương
-export const fullPriceOf = n => (Number(n.full_price) > 0 ? Number(n.full_price) : (Number(n.price) || 0) * totalChapters(n));
+export const fullPriceOf = n => n.is_free ? 0 : (Number(n.full_price) > 0 ? Number(n.full_price) : (Number(n.price) || 0) * totalChapters(n));
+// Truyện có "bán" được không: có giá trọn bộ > 0, hoặc được đặt giá 0đ có chủ ý (is_free: hàng miễn phí / tặng kèm vẫn là hàng bình thường)
+export const isSellable = n => !!n.is_free || fullPriceOf(n) > 0;
 // Gom truyện của một combo: nếu combo có danh sách truyện đã tick (novel_ids) thì lấy đúng các truyện đó;
 // combo cũ (chưa có danh sách) thì tự gom theo tên tác giả. Cộng giá trọn bộ từng truyện, tính % giảm so với giá combo.
 export function comboStats(combo, novels) {
     const ids = Array.isArray(combo.novel_ids) ? combo.novel_ids : [];
     const k = authorKey(combo.author);
-    const items = ids.length ? novels.filter(n => ids.includes(n.id) && fullPriceOf(n) > 0)
-        : k ? novels.filter(n => authorKey(n) === k && fullPriceOf(n) > 0) : [];
+    const items = ids.length ? novels.filter(n => ids.includes(n.id) && isSellable(n))
+        : k ? novels.filter(n => authorKey(n) === k && isSellable(n)) : [];
     const retail = items.reduce((s, n) => s + fullPriceOf(n), 0);
     const price = Number(combo.price) || 0;
-    const pct = retail > 0 && price > 0 && price < retail ? Math.round((1 - price / retail) * 100) : 0;
+    const given = combo.price !== '' && combo.price != null; // đã nhập giá (0đ cũng là giá: combo miễn phí / quà tặng)
+    const pct = retail > 0 && given && price < retail ? Math.round((1 - price / retail) * 100) : 0;
     return { items, retail, price, pct };
 }

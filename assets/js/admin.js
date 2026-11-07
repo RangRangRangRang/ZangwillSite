@@ -3,13 +3,21 @@ import {
     getProducts, getNovels, getCombos, saveProduct, deleteProduct, saveNovel, deleteNovel, saveCombo, deleteCombo,
     sendOtp, signInPassword, getSession, signOut, sb, uploadImage, uploadFile, getSettings, saveSettings, settingsHint, reorderNovels,
 } from './db.js';
-import { esc, safe, parseLinks, linksToText, imgList, fullDeal, authorKey, fullPriceOf, comboStats } from './util.js';
+import { esc, safe, parseLinks, linksToText, imgList, fullDeal, authorKey, fullPriceOf, comboStats, isSellable } from './util.js';
 import { readNovelFile, downloadTemplate, titleKey, DEFAULT_PRICE } from './import.js';
+const curKind = () => tab === 'movies' ? 'movie' : 'novel'; // loại đang mở ở tab (cho nhập Excel)
 
 const $ = s => document.querySelector(s);
 const CATS = ['Windows Apps', 'Mac Apps', 'Linux Apps', 'Mobile Apps', 'Web Apps', 'Chrome Extensions', 'Firefox Add-ons', 'Edge Add-ons', 'Plugins', 'Games', 'Công cụ', 'Scripts', 'Khác'];
-let tab = 'products'; // 'products' | 'novels' | 'combos' | 'site'
+let tab = 'products'; // 'products' | 'novels' | 'movies' | 'combos' | 'site'
+const isItemTab = t => t === 'novels' || t === 'movies'; // Truyện dịch và Phim dùng chung bảng novels (cột kind)
+const kindOf = n => n && n.kind === 'movie' ? 'movie' : 'novel';
 let adminQuery = '', queryTab = ''; // ô tìm kiếm trong danh sách quản trị
+let adminSort = 'default'; // cách xem danh sách truyện / phim (chỉ để xem, không đổi thứ tự trang chủ)
+const totalOf = o => (o.volumes || []).reduce((m, v) => Math.max(m, v.to), 0);
+const isSeriesItem = o => kindOf(o) === 'movie' && (o.movie_type === 'series' || (o.movie_type !== 'single' && totalOf(o) > 1)); // theo lựa chọn; chưa chọn thì nhiều hơn 1 tập = phim bộ
+const viewOptions = t => [['default', 'Thứ tự trang chủ (kéo thả được)'], ['title', 'Tên A → Z'], ['len', 'Nhiều tập / chương nhất'], ['price', 'Giá mỗi tập / chương (thấp → cao)'], ['ongoing', 'Chỉ đang tiếp tục'], ['done', 'Chỉ đã kết thúc'],
+    ...(t === 'movies' ? [['series', 'Chỉ phim bộ'], ['single', 'Chỉ phim lẻ'], ['seriesfirst', 'Phim bộ trước'], ['singlefirst', 'Phim lẻ trước']] : [])];
 // Bỏ dấu + viết thường để gõ "tu tien" vẫn tìm ra "Tu Tiên"
 const fold = t => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
 
@@ -30,7 +38,10 @@ async function run(fn) {
     try { say(''); await fn(); }
     catch (e) {
         console.error(e);
-        const hint = /full_price|sort_order/.test(e.message) ? ' — Hãy chạy file supabase/update_v4.sql trong SQL Editor rồi thử lại.'
+        const hint = /movie_type/.test(e.message) ? ' — Hãy chạy file supabase/update_v9.sql trong SQL Editor rồi thử lại.'
+            : /\bkind\b/.test(e.message) ? ' — Hãy chạy file supabase/update_v8.sql trong SQL Editor rồi thử lại.'
+            : /is_free/.test(e.message) ? ' — Hãy chạy file supabase/update_v7.sql trong SQL Editor rồi thử lại.'
+            : /full_price|sort_order/.test(e.message) ? ' — Hãy chạy file supabase/update_v4.sql trong SQL Editor rồi thử lại.'
             : /novel_ids/.test(e.message) ? ' — Hãy chạy file supabase/update_v6.sql trong SQL Editor rồi thử lại.'
             : /combos/.test(e.message) ? ' — Hãy chạy file supabase/update_v5.sql trong SQL Editor rồi thử lại.' : '';
         say('Lỗi: ' + e.message + hint, true);
@@ -70,6 +81,7 @@ $('#logout').onclick = () => run(async () => { await signOut(); loginView(); });
 const tabsHtml = () => `<div class="tabs">
     <button class="btn ${tab === 'products' ? 'on' : ''}" data-tab="products">💻 Phần mềm</button>
     <button class="btn ${tab === 'novels' ? 'on' : ''}" data-tab="novels">📚 Truyện dịch</button>
+    <button class="btn ${tab === 'movies' ? 'on' : ''}" data-tab="movies">🎬 Phim</button>
     <button class="btn ${tab === 'combos' ? 'on' : ''}" data-tab="combos">🎁 Combo</button>
     <button class="btn ${tab === 'site' ? 'on' : ''}" data-tab="site">🏠 Trang chủ</button></div>`;
 
@@ -156,23 +168,25 @@ async function panel() {
     $('#logout').hidden = false;
     document.querySelector('main').classList.toggle('wide', tab === 'site'); // tab Trang chủ cần chỗ rộng cho 2 nửa
     if (tab === 'site') { shownTab = ''; return sitePage(); }
-    if (queryTab !== tab) { adminQuery = ''; queryTab = tab; } // đổi tab thì xóa ô tìm
+    if (queryTab !== tab) { adminQuery = ''; adminSort = 'default'; queryTab = tab; } // đổi tab thì xóa ô tìm và cách xem
     // Đang ở đúng tab rồi (vừa sửa/xóa/nhập xong) → chỉ tải lại danh sách, giữ nguyên vị trí cuộn và ô tìm kiếm
     const refresh = shownTab === tab && !!$('#list');
     const y = scrollY;
     if (!refresh) $('#app').innerHTML = `${tabsHtml()}
-    <div class="top"><h1>${{ products: 'Phần mềm', novels: 'Truyện dịch', combos: 'Combo' }[tab]}</h1>
-    <div class="row" style="margin:0">${tab === 'novels' ? '<button class="btn" data-act="tpl">⬇ File Excel mẫu</button><button class="btn" data-act="import">📥 Nhập từ Excel</button>' : ''}
+    <div class="top"><h1>${{ products: 'Phần mềm', novels: 'Truyện dịch', movies: 'Phim', combos: 'Combo' }[tab]}</h1>
+    <div class="row" style="margin:0">${isItemTab(tab) ? '<button class="btn" data-act="tpl">⬇ File Excel mẫu</button><button class="btn" data-act="import">📥 Nhập từ Excel</button>' : ''}
     <button class="btn p" data-act="add">+ Thêm mới</button></div></div>
     <input type="file" id="xfile" accept=".xlsx,.xls,.csv" hidden>
-    <input type="search" id="aq" placeholder="${{ products: 'Tìm theo tên hoặc danh mục…', novels: 'Tìm theo tên truyện hoặc tác giả…', combos: 'Tìm theo tên combo…' }[tab]}" value="${esc(adminQuery)}" aria-label="Tìm trong danh sách" autocomplete="off" style="margin:0 0 14px">
+    <div class="row" style="margin:0 0 14px;align-items:center"><input type="search" id="aq" placeholder="${{ products: 'Tìm theo tên hoặc danh mục…', novels: 'Tìm theo tên truyện hoặc tác giả…', movies: 'Tìm theo tên phim hoặc đạo diễn…', combos: 'Tìm theo tên combo…' }[tab]}" value="${esc(adminQuery)}" aria-label="Tìm trong danh sách" autocomplete="off" style="margin:0;flex:1 1 260px">
+    ${isItemTab(tab) ? `<select id="asort" aria-label="Cách xem danh sách" style="margin:0;flex:0 1 280px">${viewOptions(tab).map(([v, l]) => `<option value="${v}" ${adminSort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>` : ''}</div>
     <div id="list"><div class="empty">Đang tải…</div></div>`;
     if (tab === 'combos') { [window.__items, window.__novels] = await Promise.all([getCombos(), getNovels()]); }
-    else window.__items = tab === 'products' ? await getProducts() : await getNovels();
+    else if (tab === 'products') window.__items = await getProducts();
+    else { const k = tab === 'movies' ? 'movie' : 'novel'; window.__items = (await getNovels()).filter(n => kindOf(n) === k); }
     shownTab = tab;
     drawList();
     if (refresh) scrollTo(0, y);
-    else if (tab === 'novels') enableDnD();
+    else if (isItemTab(tab)) enableDnD();
 }
 
 const rowBtns = o => `<button class="btn" data-act="edit" data-id="${esc(o.id)}">Sửa</button><button class="btn d" data-act="del" data-id="${esc(o.id)}">Xóa</button>`;
@@ -184,7 +198,7 @@ function rowHtml(o, i, n, locked) {
     }
     // Truyện: có tay nắm kéo thả + nút đưa lên đầu / lên / xuống (dùng được cả trên điện thoại)
     return `<div class="rv nrow" data-id="${esc(o.id)}" style="cursor:default">${locked ? '' : '<span class="grip" title="Kéo để sắp xếp" aria-hidden="true">⠿</span>'}<span class="pos">${i + 1}</span>
-    <div style="flex:1;min-width:0"><b>${esc(o.title)}</b><small>${o.status === 'done' ? 'Đã kết thúc' : 'Đang tiếp tục'}</small></div>
+    <div style="flex:1;min-width:0"><b>${esc(o.title)}</b><small>${o.status === 'done' ? 'Đã kết thúc' : 'Đang tiếp tục'}${kindOf(o) === 'movie' ? (isSeriesItem(o) ? ` · Phim bộ (${totalOf(o)} tập)` : ' · Phim lẻ') : ''}</small></div>
     <button class="btn mv" data-act="top" data-id="${esc(o.id)}" title="Đưa lên đầu trang chủ" ${locked || i === 0 ? 'disabled' : ''}>⤒ Lên đầu</button>
     <button class="btn mv" data-act="up" data-id="${esc(o.id)}" aria-label="Lên một bậc" ${locked || i === 0 ? 'disabled' : ''}>↑</button>
     <button class="btn mv" data-act="down" data-id="${esc(o.id)}" aria-label="Xuống một bậc" ${locked || i === n - 1 ? 'disabled' : ''}>↓</button>${rowBtns(o)}</div>`;
@@ -192,11 +206,21 @@ function rowHtml(o, i, n, locked) {
 function drawList() {
     const items = window.__items, q = fold(adminQuery).trim();
     // Giữ số thứ tự thật trong toàn danh sách, kể cả khi đang lọc
-    const rows = items.map((o, i) => ({ o, i })).filter(({ o }) => !q || fold(tab === 'products' ? `${o.name} ${o.cat}` : tab === 'combos' ? o.author : `${o.title} ${o.author || ''}`).includes(q));
-    const hint = q && tab === 'novels' ? '<div class="meta" style="margin-bottom:10px">Đang lọc — xóa ô tìm kiếm để kéo thả / sắp xếp thứ tự.</div>' : '';
+    let rows = items.map((o, i) => ({ o, i })).filter(({ o }) => !q || fold(tab === 'products' ? `${o.name} ${o.cat}` : tab === 'combos' ? o.author : `${o.title} ${o.author || ''}`).includes(q));
+    // Cách xem (chỉ ảnh hưởng màn hình quản trị, không đổi thứ tự thật trên trang chủ)
+    const v = isItemTab(tab) ? adminSort : 'default';
+    if (v === 'ongoing' || v === 'done') rows = rows.filter(({ o }) => (o.status === 'done') === (v === 'done'));
+    if (v === 'series') rows = rows.filter(({ o }) => isSeriesItem(o));
+    if (v === 'single') rows = rows.filter(({ o }) => !isSeriesItem(o));
+    if (v === 'title') rows.sort((a, b) => String(a.o.title).localeCompare(String(b.o.title), 'vi'));
+    if (v === 'len') rows.sort((a, b) => totalOf(b.o) - totalOf(a.o));
+    if (v === 'price') rows.sort((a, b) => (Number(a.o.price) || 0) - (Number(b.o.price) || 0));
+    if (v === 'seriesfirst' || v === 'singlefirst') { const f = v === 'seriesfirst'; rows.sort((a, b) => (isSeriesItem(b.o) === f) - (isSeriesItem(a.o) === f)); }
+    const locked = !!q || v !== 'default'; // đang lọc / sắp xếp thì khóa kéo thả
+    const hint = locked && isItemTab(tab) ? '<div class="meta" style="margin-bottom:10px">Đang lọc / sắp xếp để xem — chọn "Thứ tự trang chủ" và xóa ô tìm kiếm để kéo thả đổi thứ tự.</div>' : '';
     $('#list').innerHTML = !items.length ? '<div class="empty">Chưa có mục nào.</div>'
         : !rows.length ? '<div class="empty">Không tìm thấy mục nào.</div>'
-        : hint + rows.map(({ o, i }) => rowHtml(o, i, items.length, !!q)).join('');
+        : hint + rows.map(({ o, i }) => rowHtml(o, i, items.length, locked)).join('');
 }
 
 /* ===== Sắp xếp truyện: kéo thả hoặc bấm nút. Truyện đứng đầu danh sách = đầu tiên ở trang chủ ===== */
@@ -250,29 +274,32 @@ document.addEventListener('click', e => {
     if (!b) return;
     const id = b.dataset.id;
     const item = (window.__items || []).find(x => x.id === id);
-    if (b.dataset.act === 'tpl') return run(downloadTemplate);
+    if (b.dataset.act === 'tpl') return run(() => downloadTemplate(curKind()));
     if (b.dataset.act === 'import') return $('#xfile').click();
     if (['top', 'up', 'down'].includes(b.dataset.act)) return moveNovel(id, b.dataset.act);
-    if (b.dataset.act === 'add') ({ products: productPage, novels: novelForm, combos: comboForm }[tab])();
-    if (b.dataset.act === 'edit' && item) ({ products: productPage, novels: novelForm, combos: comboForm }[tab])(item);
+    const openers = { products: productPage, novels: it => novelForm(it, 'novel'), movies: it => novelForm(it, 'movie'), combos: comboForm };
+    if (b.dataset.act === 'add') openers[tab]();
+    if (b.dataset.act === 'edit' && item) openers[tab](item);
     if (b.dataset.act === 'del' && confirm('Xóa mục này? Không thể hoàn tác.')) {
-        run(async () => { await ({ products: deleteProduct, novels: deleteNovel, combos: deleteCombo }[tab])(id); await panel(); say('Đã xóa.'); });
+        run(async () => { await ({ products: deleteProduct, novels: deleteNovel, movies: deleteNovel, combos: deleteCombo }[tab])(id); await panel(); say('Đã xóa.'); });
     }
 });
 
 // Gõ vào ô tìm: chỉ vẽ lại danh sách (ô nhập không mất con trỏ)
 document.addEventListener('input', e => { if (e.target.id === 'aq') { adminQuery = e.target.value; drawList(); } });
+document.addEventListener('change', e => { if (e.target.id === 'asort') { adminSort = e.target.value; drawList(); } });
 
-/* ===== Nhập truyện từ Excel ===== */
+/* ===== Nhập truyện / phim từ Excel (theo tab đang mở) ===== */
 // Chọn file → đọc → hiện bản xem trước (mới / cập nhật / lỗi) → bấm Nhập mới ghi vào database.
 // Truyện trùng TÊN với truyện đã có thì cập nhật (ô Excel để trống = giữ nguyên dữ liệu cũ).
 document.addEventListener('change', e => {
     if (e.target.id !== 'xfile' || !e.target.files[0]) return;
     const file = e.target.files[0]; e.target.value = '';
+    const kind = curKind();
     run(async () => {
         say('Đang đọc file…');
-        const items = await readNovelFile(file);
-        const old = new Map((await getNovels()).map(n => [titleKey(n.title), n]));
+        const items = await readNovelFile(file, kind);
+        const old = new Map((await getNovels()).filter(n => kindOf(n) === kind).map(n => [titleKey(n.title), n])); // chỉ so tên trong cùng loại
         const seen = new Set();
         for (const it of items) {
             if (it.error) continue;
@@ -282,19 +309,20 @@ document.addEventListener('change', e => {
             seen.add(k);
         }
         say('');
-        importPreview(items);
+        importPreview(items, kind);
     });
 });
 
-function importPreview(items) {
+function importPreview(items, kind = 'novel') {
+    const W = kind === 'movie' ? 'phim' : 'truyện';
     const ok = items.filter(i => !i.error);
     const nNew = ok.filter(i => !i.old).length, nUp = ok.length - nNew;
     const row = i => `<tr><td>${i.line}</td><td>${esc(i.title || '—')}</td><td>${i.error ? `<span style="color:var(--dg)">Bỏ qua: ${esc(i.error)}</span>` : (i.old ? 'Cập nhật' : 'Thêm mới') + (i.warns && i.warns.length ? `<br><small style="color:var(--mut)">Lưu ý: ${esc(i.warns.join('; '))}</small>` : '')}</td></tr>`;
-    $('#frm').innerHTML = `<h2 style="margin:0">Nhập truyện từ Excel</h2><div id="fmsg"></div>
+    $('#frm').innerHTML = `<h2 style="margin:0">Nhập ${W} từ Excel</h2><div id="fmsg"></div>
     <p>Thêm mới <b>${nNew}</b> · Cập nhật <b>${nUp}</b> · Bỏ qua (lỗi) <b>${items.length - ok.length}</b></p>
-    <div style="max-height:50vh;overflow:auto"><table><tr><th>Dòng</th><th>Tên truyện</th><th>Kết quả</th></tr>${items.map(row).join('')}</table></div>
+    <div style="max-height:50vh;overflow:auto"><table><tr><th>Dòng</th><th>Tên ${W}</th><th>Kết quả</th></tr>${items.map(row).join('')}</table></div>
     <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" type="button" id="cancel">Hủy</button>
-    <button class="btn p" type="submit" ${ok.length ? '' : 'disabled'}>Nhập ${ok.length} truyện</button></div>`;
+    <button class="btn p" type="submit" ${ok.length ? '' : 'disabled'}>Nhập ${ok.length} ${W}</button></div>`;
     $('#cancel').onclick = () => $('#dlg').close();
     $('#frm').onsubmit = e => {
         e.preventDefault();
@@ -302,23 +330,25 @@ function importPreview(items) {
             let done = 0; const fails = [];
             for (const it of ok) {
                 say(`Đang nhập ${done + fails.length + 1}/${ok.length}…`);
-                try { await saveNovel(mergeNovel(it)); done++; }
+                try { await saveNovel(mergeNovel(it, kind)); done++; }
                 catch (err) { console.error(err); fails.push(`${it.title}: ${err.message}`); }
             }
             $('#dlg').close(); await panel();
-            say(fails.length ? `Đã nhập ${done} truyện. Lỗi ${fails.length}: ${fails.join(' | ')}` : `Đã nhập ${done} truyện.`, fails.length > 0);
+            say(fails.length ? `Đã nhập ${done} ${W}. Lỗi ${fails.length}: ${fails.join(' | ')}` : `Đã nhập ${done} ${W}.`, fails.length > 0);
         });
     };
     $('#dlg').showModal();
 }
 
 // Gộp dòng Excel vào truyện cũ (nếu có); ô trống thì giữ giá trị cũ
-function mergeNovel(it) {
-    const o = it.old || { author: '', status: 'ongoing', synopsis: '', price: DEFAULT_PRICE, cover: '', volumes: [], reviews: [] };
+function mergeNovel(it, kind = 'novel') {
+    const o = it.old || { author: '', status: 'ongoing', synopsis: '', price: kind === 'movie' ? 0 : DEFAULT_PRICE, cover: '', volumes: [], reviews: [] };
     const { line, error, old, warns, ...f } = it;
     return {
         id: o.id, title: it.title, author: o.author, status: o.status, synopsis: o.synopsis, price: o.price, cover: o.cover, volumes: o.volumes, reviews: o.reviews,
         ...f,
+        ...((kind === 'movie' || 'kind' in o) ? { kind } : {}), // chỉ gửi cột kind khi cần (cần update_v8.sql cho phim)
+        ...((f.full_price > 0 && o.is_free) ? { is_free: false } : {}), // đổi từ 0đ sang có giá
     };
 }
 
@@ -471,28 +501,37 @@ function productPage(p = { name: '', cat: 'Windows Apps', icon: '', short: '', d
     window.scrollTo(0, 0);
 }
 
-function novelForm(n = { title: '', author: '', synopsis: '', status: 'ongoing', price: 200, cover: '', volumes: [], reviews: [] }) {
+const isFreeIn = v => String(v ?? '').trim() !== '' && parseInt(v, 10) === 0; // ô giá toàn tập gõ đúng 0
+function novelForm(n, kind = 'novel') {
+    const movie = (n && n.kind === 'movie') || kind === 'movie';
+    n = n || { title: '', author: '', synopsis: '', status: 'ongoing', price: movie ? '' : 200, cover: '', volumes: [], reviews: [] };
+    // Nhãn theo loại: Truyện (chương / quyển) hay Phim (tập / phần)
+    const W = movie ? 'phim' : 'truyện', U = movie ? 'tập' : 'chương', V = movie ? 'Phần' : 'Quyển', AU = movie ? 'Đạo diễn / nguồn' : 'Tác giả';
     const old = n.volumes || [];
     const mode = old.length === 1 && old[0].name === 'Toàn tập' ? 'all' : 'vol';
     const total = mode === 'all' ? old[0].to : '';
     // Mỗi quyển: {title, from, to}. Tên hiển thị luôn là "Quyển <số>"; title là tên riêng (có thể bỏ trống)
-    const vols = mode === 'all' ? [] : old.map(v => ({ title: v.title ?? (/^Quyển\s*\d+$/i.test(v.name) ? '' : v.name), from: v.from, to: v.to }));
+    const vols = mode === 'all' ? [] : old.map(v => ({ title: v.title ?? (/^(Quyển|Phần)\s*\d+$/i.test(v.name) ? '' : v.name), from: v.from, to: v.to }));
 
-    openForm(n.id ? 'Sửa truyện' : 'Thêm truyện', `
-    <label>Tên truyện</label><input name="title" required value="${esc(n.title)}">
-    <div class="two"><div><label>Tác giả</label><input name="author" value="${esc(n.author)}"></div>
+    openForm(n.id ? `Sửa ${W}` : `Thêm ${W}`, `
+    <label>Tên ${W}</label><input name="title" required value="${esc(n.title)}">
+    <div class="two"><div><label>${AU}</label><input name="author" value="${esc(n.author)}"></div>
     <div><label>Trạng thái</label><select name="status">
       <option value="ongoing" ${n.status === 'ongoing' ? 'selected' : ''}>Đang tiếp tục</option>
       <option value="done" ${n.status === 'done' ? 'selected' : ''}>Đã kết thúc</option></select></div></div>
+    ${movie ? `<label>Loại phim</label><select name="movie_type">
+      <option value="" ${!n.movie_type ? 'selected' : ''}>Tự nhận theo số tập (nhiều hơn 1 tập = phim bộ)</option>
+      <option value="series" ${n.movie_type === 'series' ? 'selected' : ''}>Phim bộ</option>
+      <option value="single" ${n.movie_type === 'single' ? 'selected' : ''}>Phim lẻ</option></select>` : ''}
     <label>Nội dung giới thiệu</label><textarea name="synopsis" rows="4">${esc(n.synopsis)}</textarea>
-    <div class="two"><div><label>Giá mỗi chương (đ)</label><input name="price" type="number" min="0" value="${esc(n.price)}"></div>
+    <div class="two"><div><label>Giá mỗi ${U} (đ)</label><input name="price" type="number" min="0" value="${esc(n.price)}"${movie ? ' placeholder="vd: 3000"' : ''}></div>
     <div>${imgField('cover', 'Ảnh bìa (link hoặc tải lên)', n.cover)}</div></div>
-    <label>Giá mua toàn tập (đ) — để trống nếu không bán trọn bộ</label><input name="full_price" type="number" min="0" value="${esc(n.full_price || '')}" placeholder="vd: 25000">
+    <label>Giá mua toàn tập (đ) — để trống nếu không bán trọn bộ; nhập 0 = giá 0đ (hàng miễn phí / tặng kèm, vẫn bán và vào combo như bình thường)</label><input name="full_price" type="number" min="0" value="${esc(n.is_free ? '0' : (n.full_price || ''))}" placeholder="vd: 25000">
     <div id="fpinfo" class="meta" style="margin-top:6px" aria-live="polite"></div>
-    <label>Các quyển</label>
+    <label>Các ${V.toLowerCase()}</label>
     <select id="vmode"><option value="all" ${mode === 'all' ? 'selected' : ''}>Toàn tập</option><option value="vol" ${mode === 'vol' ? 'selected' : ''}>Theo quyển</option></select>
-    <div id="vall" ${mode === 'all' ? '' : 'hidden'}><label>Tổng số chương (tính từ chương 1)</label><input type="number" id="vtotal" min="1" value="${esc(total)}"></div>
-    <div id="vvol" ${mode === 'vol' ? '' : 'hidden'}><label>Số quyển (từ 1 đến …)</label><input type="number" id="vcount" min="1" max="100" value="${vols.length || ''}">
+    <div id="vall" ${mode === 'all' ? '' : 'hidden'}><label>Tổng số ${U} (tính từ ${U} 1)</label><input type="number" id="vtotal" min="1" value="${esc(total)}"></div>
+    <div id="vvol" ${mode === 'vol' ? '' : 'hidden'}><label>Số ${V.toLowerCase()} (từ 1 đến …)</label><input type="number" id="vcount" min="1" max="100" value="${vols.length || ''}">
       <div style="overflow-x:auto"><table id="vtab"></table></div></div>
     <label>Link review / đánh giá (Facebook, TikTok, YouTube, báo… mỗi dòng: Tên|URL hoặc chỉ URL)</label>
     <textarea name="reviews" rows="3">${esc(linksToText(n.reviews))}</textarea>
@@ -500,12 +539,16 @@ function novelForm(n = { title: '', author: '', synopsis: '', status: 'ongoing',
         f => saveNovel({
             id: n.id, title: f.title.trim(), author: f.author.trim(), status: f.status, synopsis: f.synopsis,
             price: Math.max(0, parseInt(f.price, 10) || 0), cover: f.cover.trim(), volumes: buildVolumes(), reviews: parseLinks(f.reviews),
+            ...(movie && (f.movie_type || 'movie_type' in n) ? { movie_type: f.movie_type || '' } : {}), // chỉ gửi khi cần (cần update_v9.sql)
+            ...((movie || 'kind' in n) ? { kind: movie ? 'movie' : 'novel' } : {}), // chỉ gửi cột kind khi cần, để truyện thường vẫn lưu được trước khi chạy update_v8.sql
             ...(('full_price' in n) || parseInt(f.full_price, 10) > 0 ? { full_price: Math.max(0, parseInt(f.full_price, 10) || 0) } : {}),
+            // Nhập đúng số 0 ở ô giá toàn tập = miễn phí (cần chạy update_v7.sql; chỉ gửi cột này khi cần để không ảnh hưởng truyện thường)
+            ...((('is_free' in n) || isFreeIn(f.full_price)) ? { is_free: isFreeIn(f.full_price) } : {}),
         }));
 
     const drawV = () => {
-        $('#vtab').innerHTML = `<tr><th>Quyển</th><th>Tên quyển (bỏ trống cũng được)</th><th>Chương</th></tr>` + vols.map((v, i) => `<tr>
-        <td style="white-space:nowrap">Quyển ${i + 1}</td>
+        $('#vtab').innerHTML = `<tr><th>${V}</th><th>Tên ${V.toLowerCase()} (bỏ trống cũng được)</th><th>${U[0].toUpperCase() + U.slice(1)}</th></tr>` + vols.map((v, i) => `<tr>
+        <td style="white-space:nowrap">${V} ${i + 1}</td>
         <td><input data-i="${i}" data-k="title" value="${esc(v.title)}"></td>
         <td><div class="rng"><input type="number" min="1" data-i="${i}" data-k="from" value="${esc(v.from)}" placeholder="từ"> – <input type="number" min="1" data-i="${i}" data-k="to" value="${esc(v.to)}" placeholder="đến"></div></td></tr>`).join('');
     };
@@ -532,9 +575,10 @@ function novelForm(n = { title: '', author: '', synopsis: '', status: 'ongoing',
         : vols.reduce((m, v) => Math.max(m, parseInt(v.to, 10) || 0), 0);
     const updDeal = () => {
         const f = $('#frm').elements, price = +f.price.value || 0, fp = +f.full_price.value || 0, t = totalNow(), el = $('#fpinfo');
-        if (!(t > 0 && price > 0)) { el.textContent = fp ? 'Nhập số chương và giá mỗi chương để tính % rẻ hơn.' : ''; return; }
+        if (isFreeIn(f.full_price.value)) { el.textContent = 'Truyện sẽ hiện giá 0đ: vẫn thêm vào giỏ và đưa vào combo được (làm quà tặng kèm hoặc combo miễn phí).'; return; }
+        if (!(t > 0 && price > 0)) { el.textContent = fp ? `Nhập số ${U} và giá mỗi ${U} để tính % rẻ hơn.` : ''; return; }
         const d = fullDeal(price, t, fp);
-        if (!fp) el.textContent = `Giá lẻ cả bộ: ${vnd(d.retail)} (${t} chương × ${vnd(price)}). Nhập giá toàn tập để xem % rẻ hơn.`;
+        if (!fp) el.textContent = `Giá lẻ cả bộ: ${vnd(d.retail)} (${t} ${U} × ${vnd(price)}). Nhập giá toàn tập để xem % rẻ hơn.`;
         else if (d.pct) el.innerHTML = `Giá lẻ cả bộ ${vnd(d.retail)} → mua toàn tập <b>rẻ hơn ${d.pct}%</b> (tiết kiệm ${vnd(d.retail - fp)}).`;
         else el.textContent = `⚠ Giá toàn tập không thấp hơn giá lẻ cả bộ (${vnd(d.retail)}), nên trang web sẽ không hiện "rẻ hơn".`;
     };
@@ -544,14 +588,14 @@ function novelForm(n = { title: '', author: '', synopsis: '', status: 'ongoing',
     function buildVolumes() {
         if ($('#vmode').value === 'all') {
             const t = parseInt($('#vtotal').value, 10);
-            if (!(t >= 1)) throw new Error('Hãy nhập tổng số chương.');
+            if (!(t >= 1)) throw new Error(`Hãy nhập tổng số ${U}.`);
             return [{ name: 'Toàn tập', title: '', from: 1, to: t }];
         }
-        if (!vols.length) throw new Error('Hãy nhập số quyển.');
+        if (!vols.length) throw new Error(`Hãy nhập số ${V.toLowerCase()}.`);
         return vols.map((v, i) => {
             const from = parseInt(v.from, 10), to = parseInt(v.to, 10);
-            if (!(from >= 1) || !(to >= from)) throw new Error(`Quyển ${i + 1}: chương "từ / đến" chưa đúng.`);
-            return { name: `Quyển ${i + 1}`, title: (v.title || '').trim(), from, to };
+            if (!(from >= 1) || !(to >= from)) throw new Error(`${V} ${i + 1}: ${U} "từ / đến" chưa đúng.`);
+            return { name: `${V} ${i + 1}`, title: (v.title || '').trim(), from, to };
         });
     }
 }
@@ -560,7 +604,7 @@ function novelForm(n = { title: '', author: '', synopsis: '', status: 'ongoing',
 // Gõ đúng tên một tác giả thì tự tick sẵn các truyện của tác giả đó (vẫn bỏ / thêm tick tự do được).
 const vnd = x => Number(x || 0).toLocaleString('vi-VN') + 'đ';
 function comboForm(c = { author: '', cover: '', price: '', novel_ids: [] }) {
-    const novels = (window.__novels || []).filter(n => fullPriceOf(n) > 0); // chỉ truyện đã có số chương / giá mới đưa vào combo được
+    const novels = (window.__novels || []).filter(isSellable); // chỉ truyện đã có giá (kể cả 0đ có chủ ý) mới đưa vào combo được
     const authors = [...new Map(novels.filter(n => authorKey(n)).map(n => [authorKey(n), String(n.author).trim()])).values()].sort((a, b) => a.localeCompare(b, 'vi'));
     const byAuthor = name => { const k = authorKey(name); return k ? novels.filter(n => authorKey(n) === k).map(n => n.id) : []; };
     // Đang sửa: dùng danh sách đã lưu; combo cũ chưa có danh sách thì lấy các truyện của tác giả
@@ -573,20 +617,24 @@ function comboForm(c = { author: '', cover: '', price: '', novel_ids: [] }) {
     <input name="author" required list="alist" value="${esc(c.author)}" autocomplete="off">
     <datalist id="alist">${authors.map(a => `<option value="${esc(a)}">`).join('')}</datalist>
     <label>Chọn truyện trong combo</label>
-    <input type="search" id="csearch" placeholder="Lọc theo tên truyện…" autocomplete="off">
+    <div class="row" style="margin:0 0 6px" id="ctype" role="group" aria-label="Lọc theo loại">
+      <button class="btn on" type="button" data-ct="all">Tất cả (${novels.length})</button>
+      <button class="btn" type="button" data-ct="novel">📚 Truyện (${novels.filter(n => kindOf(n) === 'novel').length})</button>
+      <button class="btn" type="button" data-ct="movie">🎬 Phim (${novels.filter(n => kindOf(n) === 'movie').length})</button></div>
+    <input type="search" id="csearch" placeholder="Lọc theo tên…" autocomplete="off">
     <div class="row" style="margin:6px 0"><button class="btn" type="button" id="call">Chọn hết (đang hiện)</button><button class="btn" type="button" id="cnone">Bỏ chọn hết</button></div>
-    <div id="cpick" style="max-height:220px;overflow:auto;border:1px solid var(--bd);border-radius:8px;padding:6px 10px">${novels.map(n => `<label class="cpk" data-t="${esc(fold(n.title))}" style="display:flex;gap:8px;align-items:center;margin:0;padding:5px 0;color:var(--tx);font-size:15px;cursor:pointer"><input type="checkbox" value="${esc(n.id)}" style="width:auto" ${sel.has(n.id) ? 'checked' : ''}>${esc(n.title)}</label>`).join('') || '<div class="meta">Chưa có truyện nào (cần có số chương).</div>'}</div>
+    <div id="cpick" style="max-height:220px;overflow:auto;border:1px solid var(--bd);border-radius:8px;padding:6px 10px">${novels.map(n => `<label class="cpk" data-t="${esc(fold(n.title))}" data-k="${kindOf(n)}" style="display:flex;gap:8px;align-items:center;margin:0;padding:5px 0;color:var(--tx);font-size:15px;cursor:pointer"><input type="checkbox" value="${esc(n.id)}" style="width:auto" ${sel.has(n.id) ? 'checked' : ''}>${n.kind === 'movie' ? '🎬 ' : ''}${esc(n.title)}</label>`).join('') || '<div class="meta">Chưa có truyện / phim nào (cần có số chương).</div>'}</div>
     <div id="cinfo" aria-live="polite"></div>
     ${imgField('cover', 'Ảnh bìa banner combo (link hoặc tải lên — nên dùng ảnh dọc tỉ lệ 3:4)', c.cover || '')}
     <label>Giá combo (đ) — giá mua trọn bộ tất cả truyện đã chọn</label>
-    <input name="price" type="number" min="1" required value="${esc(c.price || '')}" placeholder="vd: 250000">
+    <input name="price" type="number" min="0" required value="${esc(c.price == null ? '' : c.price)}" placeholder="vd: 250000 (nhập 0 = combo miễn phí)">
     <div id="cpct" class="meta" style="margin-top:6px" aria-live="polite"></div>`,
         f => {
             const novel_ids = ids();
             const st = comboStats({ author: f.author, price: f.price, novel_ids }, novels);
             if (st.items.length < 2) throw new Error('Hãy tick ít nhất 2 truyện cho combo.');
-            const price = parseInt(f.price, 10) || 0;
-            if (price < 1) throw new Error('Hãy nhập giá combo.');
+            const price = parseInt(f.price, 10);
+            if (!(price >= 0)) throw new Error('Hãy nhập giá combo (nhập 0 nếu là combo miễn phí).');
             return saveCombo({ id: c.id, author: f.author.trim(), cover: f.cover.trim(), price, novel_ids });
         });
 
@@ -598,13 +646,17 @@ function comboForm(c = { author: '', cover: '', price: '', novel_ids: [] }) {
                <tr><th>Tổng ${st.items.length} truyện cộng lại</th><th style="text-align:right;color:var(--ac)">${vnd(st.retail)}</th></tr></table>
                ${st.items.length < 2 ? '<div class="meta">⚠ Cần ít nhất 2 truyện mới làm được combo.</div>' : ''}`;
         const p = +f.price.value || 0;
-        $('#cpct').innerHTML = !p || !st.retail ? ''
+        $('#cpct').innerHTML = f.price.value.trim() === '' || !st.retail ? ''
             : p < st.retail ? `Giá combo ${vnd(p)} so với ${vnd(st.retail)} → ruy băng hiện <b>-${st.pct}%</b> (tiết kiệm ${vnd(st.retail - p)}).`
             : `⚠ Giá combo không thấp hơn tổng giá lẻ (${vnd(st.retail)}), nên sẽ không hiện ruy băng giảm giá.`;
     };
     const tick = (list, on) => { list.forEach(id => on ? sel.add(id) : sel.delete(id)); $('#cpick').querySelectorAll('input').forEach(b => b.checked = sel.has(b.value)); upd(); };
     $('#cpick').onchange = e => { if (e.target.type === 'checkbox') { e.target.checked ? sel.add(e.target.value) : sel.delete(e.target.value); upd(); } };
-    $('#csearch').oninput = e => { e.stopPropagation(); const q = fold($('#csearch').value).trim(); $('#cpick').querySelectorAll('.cpk').forEach(l => { const off = !!q && !l.dataset.t.includes(q); l.style.display = off ? 'none' : 'flex'; l.toggleAttribute('data-off', off); }); };
+    // Lọc danh sách chọn theo loại (Tất cả / Truyện / Phim) và theo tên; "Chọn hết" chỉ tick các mục đang hiện
+    let ctype = 'all';
+    const refilter = () => { const q = fold($('#csearch').value).trim(); $('#cpick').querySelectorAll('.cpk').forEach(l => { const off = (ctype !== 'all' && l.dataset.k !== ctype) || (!!q && !l.dataset.t.includes(q)); l.style.display = off ? 'none' : 'flex'; l.toggleAttribute('data-off', off); }); };
+    $('#csearch').oninput = e => { e.stopPropagation(); refilter(); };
+    $('#ctype').onclick = e => { const b = e.target.closest('[data-ct]'); if (!b) return; ctype = b.dataset.ct; $('#ctype').querySelectorAll('[data-ct]').forEach(x => x.classList.toggle('on', x === b)); refilter(); };
     $('#call').onclick = () => tick([...$('#cpick').querySelectorAll('.cpk:not([data-off]) input')].map(b => b.value), true);
     $('#cnone').onclick = () => tick([...sel], false);
     // Gõ trúng tên một tác giả (mới) → tick thêm các truyện của tác giả đó
