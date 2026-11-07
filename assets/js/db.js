@@ -54,8 +54,12 @@ export const getNovels = async () => (await list('novels')).slice().sort(byOrder
 export async function getProduct(id) {
     return (await getProducts()).find(x => x.id === id) || (await rget(`products?select=*&id=eq.${encodeURIComponent(id)}`))[0] || null;
 }
-export async function getNovel(id) {
-    return (await getNovels()).find(x => x.id === id) || (await rget(`novels?select=*&id=eq.${encodeURIComponent(id)}`))[0] || null;
+// Mở 1 truyện / phim theo mã ngắn (slug) hoặc id dài. Ưu tiên bản đã lưu trong máy; chưa có thì chỉ tải ĐÚNG 1 dòng đó (rất nhẹ), không tải cả danh sách.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export async function getNovel(key) {
+    try { const c = JSON.parse(localStorage.getItem('zw:novels')); const hit = Array.isArray(c) && c.find(x => x.id === key || x.slug === key); if (hit) return hit; } catch (e) {}
+    const col = UUID.test(key) ? 'id' : 'slug';
+    return (await rget(`novels?select=*&${col}=eq.${encodeURIComponent(key)}&limit=1`))[0] || null;
 }
 
 /* ===== Đăng nhập admin (email OTP / magic link) ===== */

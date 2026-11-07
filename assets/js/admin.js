@@ -199,6 +199,7 @@ function rowHtml(o, i, n, locked) {
     // Truyện: có tay nắm kéo thả + nút đưa lên đầu / lên / xuống (dùng được cả trên điện thoại)
     return `<div class="rv nrow" data-id="${esc(o.id)}" style="cursor:default">${locked ? '' : '<span class="grip" title="Kéo để sắp xếp" aria-hidden="true">⠿</span>'}<span class="pos">${i + 1}</span>
     <div style="flex:1;min-width:0"><b>${esc(o.title)}</b><small>${o.status === 'done' ? 'Đã kết thúc' : 'Đang tiếp tục'}${kindOf(o) === 'movie' ? (isSeriesItem(o) ? ` · Phim bộ (${totalOf(o)} tập)` : ' · Phim lẻ') : ''}</small></div>
+    <button class="btn mv" data-act="link" data-id="${esc(o.id)}" title="Copy link gửi khách: mở thẳng truyện / phim này">🔗 Link</button>
     <button class="btn mv" data-act="top" data-id="${esc(o.id)}" title="Đưa lên đầu trang chủ" ${locked || i === 0 ? 'disabled' : ''}>⤒ Lên đầu</button>
     <button class="btn mv" data-act="up" data-id="${esc(o.id)}" aria-label="Lên một bậc" ${locked || i === 0 ? 'disabled' : ''}>↑</button>
     <button class="btn mv" data-act="down" data-id="${esc(o.id)}" aria-label="Xuống một bậc" ${locked || i === n - 1 ? 'disabled' : ''}>↓</button>${rowBtns(o)}</div>`;
@@ -274,6 +275,13 @@ document.addEventListener('click', e => {
     if (!b) return;
     const id = b.dataset.id;
     const item = (window.__items || []).find(x => x.id === id);
+    if (b.dataset.act === 'link') {
+        if (!item) return;
+        // Link công khai = thư mục chứa trang web + #/truyen|phim/mã ngắn (chưa chạy update_v10.sql thì dùng id dài, vẫn mở được)
+        const url = new URL('./', location.href).href + '#/' + (kindOf(item) === 'movie' ? 'phim' : 'truyen') + '/' + (item.slug || item.id);
+        const done = () => say(`Đã copy link: ${url}${item.slug ? '' : ' (chưa có mã ngắn — chạy supabase/update_v10.sql để có link gọn)'}`);
+        return (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(done, () => { prompt('Copy link này:', url); });
+    }
     if (b.dataset.act === 'tpl') return run(() => downloadTemplate(curKind()));
     if (b.dataset.act === 'import') return $('#xfile').click();
     if (['top', 'up', 'down'].includes(b.dataset.act)) return moveNovel(id, b.dataset.act);
