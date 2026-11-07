@@ -1,4 +1,4 @@
-// Nhập truyện / phim từ file Excel (.xlsx, .xls, .csv). Chỉ dùng ở trang admin. Hai loại dùng chung bảng, chỉ khác nhãn (chương/tập, quyển/phần).
+// Nhập truyện từ file Excel (.xlsx, .xls, .csv). Chỉ dùng ở trang admin.
 // Thư viện SheetJS chỉ được tải khi bấm nút nhập (không làm chậm trang).
 import { parseLinks } from './util.js';
 
