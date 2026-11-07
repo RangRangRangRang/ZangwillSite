@@ -123,3 +123,19 @@ dialog:has(#vtab){width:min(680px,94vw)}
 #msg:empty{display:none}
 #msg{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;width:min(680px,92vw);box-shadow:0 10px 30px rgba(0,0,0,.35);border-radius:12px}
 #msg .calc,#msg .err{margin:0}
+
+/* Trang chủ: nửa trái nhập liệu, nửa phải xem trước trang thật */
+main.wide{max-width:1560px}
+.sitegrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+.sitegrid .detail{min-width:0}
+.sec{margin:22px 0 4px;padding-top:14px;border-top:1px solid var(--bd);font-weight:700;font-size:15px}
+.sec:first-of-type{margin-top:6px;border-top:0;padding-top:0}
+.sl{display:flex;align-items:center;gap:12px}.sl input{flex:1;padding:0}.sl b{min-width:48px;text-align:right;font-variant-numeric:tabular-nums}
+.savebar{position:sticky;bottom:0;display:flex;gap:12px;align-items:center;justify-content:flex-end;margin:18px -20px -20px;padding:12px 20px;background:var(--card);border-top:1px solid var(--bd);border-radius:0 0 14px 14px}
+.savebar #fmsg{flex:1;min-width:0}.savebar #fmsg .calc,.savebar #fmsg .err{margin:0;padding:8px 12px}
+.pvpane{position:sticky;top:76px;height:calc(100vh - 96px);min-height:420px;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--bd);border-radius:14px;overflow:hidden}
+.pvbar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--bd)}
+.pvbar b{margin-right:auto}
+.pvbox{position:relative;flex:1;overflow:hidden;background:#8883}
+.pvbox iframe{position:absolute;top:0;left:0;border:0;background:var(--bg);transform-origin:0 0}
+@media(max-width:1000px){.sitegrid{grid-template-columns:1fr}.pvpane{position:relative;top:0;height:75vh;order:-1}}
