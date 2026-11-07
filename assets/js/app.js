@@ -103,7 +103,11 @@ const pCard = p => `<a class="pcard" href="#/sp/${esc(p.id)}"><div class="thumb"
 // full = true (trong cửa sổ combo): hiện giá mua trọn bộ thay vì giá mỗi chương
 // Giá hiện trên thẻ: ưu tiên giá trọn bộ; chưa tính được trọn bộ (chưa có giá/số chương) thì hiện giá mỗi chương
 const priceLine = n => isSellable(n) ? vnd(fullPriceOf(n)) + ' trọn bộ' : (Number(n.price) > 0 ? vnd(n.price) + '/' + L(n).unit : 'Liên hệ');
+<<<<<<< HEAD
 const nCard = n => `<a class="tile" href="#/${L(n).sec}/${esc(n.slug || n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${kindOf(n) === 'movie' && (n.movie_type === 'single' || (totalCh(n) && !isSeries(n))) ? 'Phim lẻ' : !totalCh(n) ? 'Đang cập nhật' : totalCh(n) + ' ' + L(n).unit} · <span class="pr">${priceLine(n)}</span></small></a>`;
+=======
+const nCard = n => `<a class="tile" href="#/${L(n).sec}/${esc(n.id)}">${cover(n)}${stTag(n.status)}<b>${esc(n.title)}</b><small>${kindOf(n) === 'movie' && (n.movie_type === 'single' || (totalCh(n) && !isSeries(n))) ? 'Phim lẻ' : !totalCh(n) ? 'Đang cập nhật' : totalCh(n) + ' ' + L(n).unit} · <span class="pr">${priceLine(n)}</span></small></a>`;
+>>>>>>> bb726af4585c0aaba7a36488730ee199beb083b7
 
 function renderProducts() {
     const { products } = DATA;
