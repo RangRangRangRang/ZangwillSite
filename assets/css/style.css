@@ -414,3 +414,10 @@ footer a{color:var(--mut)}
   .ngrid .tile small{font-size:11px;line-height:1.35}
   .ngrid .tile .tag{font-size:10px;padding:1px 6px;margin-top:6px;gap:4px}
 }
+
+/* Ô "Có trong combo" trong cửa sổ truyện / phim */
+.cdeal{margin-top:8px}
+.cdeal .cname{display:block;font:600 20px/1.2 var(--f-serif);color:var(--ink);margin:2px 0 4px}
+.cdeal b:not(.cname){font-size:24px}
+.cbtns{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:800px){.cbtns{width:100%}.cbtns .btn{flex:1}.cdeal{padding:14px}}

@@ -421,6 +421,17 @@ function dealHtml(n, max) {
     return `<div class="deal"><div><span class="lbl">Mua toàn tập${max ? ` · ${max} ${K.unit}` : ''}</span><b>${vnd(fp)}</b>${d.pct ? `<s>${vnd(d.retail)}</s>` : ''}</div>${d.pct ? `<span class="save">Rẻ hơn ${d.pct}%</span>` : ''}${max ? `<button class="btn nv" type="button" id="cfull">${ic('cart')}Thêm toàn tập vào giỏ</button>` : ''}<div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>`;
 }
 
+// Truyện / phim này nằm trong combo nào thì hiện ô "Có trong combo" ngay dưới ô mua toàn tập: giá combo, % rẻ hơn, nút xem và nút thêm combo vào giỏ
+function comboOffers(n) {
+    return DATA.combos.map(c => ({ c, st: comboStats(c, DATA.novels) })).filter(x => x.st.items.length >= 2 && x.st.items.some(i => i.id === n.id)).map(({ c, st }) =>
+        `<div class="deal cdeal"><div><span class="lbl">Có trong combo · ${st.items.length} ${wordOf(st.items)}</span><b class="cname">${esc(c.author)}</b><b>${vnd(st.price)}</b>${st.pct ? `<s>${vnd(st.retail)}</s>` : ''}</div>${st.pct ? `<span class="save">Rẻ hơn ${st.pct}%</span>` : ''}
+         <span class="cbtns"><a class="btn" href="#/combo/${esc(c.id)}">Xem combo</a><button class="btn nv" type="button" data-cadd="${esc(c.id)}">${ic('cart')}Mua combo</button></span><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>`).join('');
+}
+document.addEventListener('click', e => {
+    const b = e.target.closest('[data-cadd]'); if (!b) return;
+    addToCart({ id: 'combo:' + b.dataset.cadd }, { mode: 'combo', cid: b.dataset.cadd }, b);
+});
+
 // Tên quyển hiển thị: "Quyển 1 – Thành phố của thánh ca"
 const volLabel = v => `${v.name}${v.title ? ' – ' + v.title : ''}`;
 
@@ -435,7 +446,7 @@ function novelHtml(n) {
     return `${bc ? `<a class="btn back" href="#/combo/${esc(bc.id)}">${ic('prev')}Quay lại combo ${esc(bc.author)}</a>` : ''}
      <div class="dh2">${cover(n)}<div>${stTag(n.status)}<h1 id="dt">${esc(n.title)}</h1></div></div>
      <div class="meta"><span>${K.author}: <b>${esc(n.author || '—')}</b></span>${kindOf(n) === 'movie' ? `<span><b>${isSeries(n) ? 'Phim bộ' : 'Phim lẻ'}</b></span>` : ''}<span>${max ? max + ' ' + K.unit : 'Đang cập nhật số ' + K.unit}</span><span><b>${vnd(n.price)}</b>/${K.unit}</span></div>
-     ${dealHtml(n, max)}
+     ${dealHtml(n, max)}${comboOffers(n)}
      ${intro(n.synopsis)}
      ${vols.length ? `<h3 class="h">Danh sách ${K.vol.toLowerCase()}</h3><div class="vols"><div class="vrow th"><span>${K.vol}</span><span>${K.unit[0].toUpperCase() + K.unit.slice(1)}</span><span>Số ${K.unit}</span><span>Giá trọn ${K.vol.toLowerCase()}</span></div>
       ${vols.map((v, i) => `<div class="vrow"><b>${pickable ? `<label class="vk"><input type="checkbox" data-vol="${i}" aria-label="Chọn ${esc(v.name)}"><span>${esc(volLabel(v))}</span></label>` : esc(volLabel(v))}</b><span>${v.from} – ${v.to}</span><span>${v.to - v.from + 1} ${K.unit}</span><span>${vnd((v.to - v.from + 1) * n.price)}</span></div>`).join('')}</div>
@@ -485,10 +496,12 @@ function initCalc(n) {
 }
 
 // Cửa sổ combo: các truyện của tác giả (như lưới truyện) + giá combo, % rẻ hơn, nút thêm vào giỏ
+let backItem = null;  // truyện / phim đang xem khi bấm "Xem combo" → cửa sổ combo hiện nút "Quay lại truyện"
+let curItem = null;
 let backCombo = null; // id combo đang mở khi bấm vào một truyện bên trong → truyện đó hiện nút "Quay lại combo"
 function comboHtml(c) {
     const st = comboStats(c, DATA.novels);
-    return `<div class="dh2" style="margin-bottom:8px"><div><span class="tag ok"><i></i>Combo</span><h1 id="dt">${esc(c.author)}</h1>
+    return `${backItem ? `<a class="btn back" href="${esc(backItem.href)}">${ic('prev')}Quay lại ${esc(backItem.title)}</a>` : ''}<div class="dh2" style="margin-bottom:8px"><div><span class="tag ok"><i></i>Combo</span><h1 id="dt">${esc(c.author)}</h1>
       <div class="meta"><span><b>${st.items.length}</b> ${wordOf(st.items)}</span><span>Mua trọn bộ cả ${st.items.length} ${wordOf(st.items)}</span></div></div></div>
      <div class="deal"><div><span class="lbl">Giá combo · ${st.items.length} ${wordOf(st.items)} trọn bộ</span><b>${vnd(st.price)}</b>${st.pct ? `<s>${vnd(st.retail)}</s>` : ''}</div>${st.pct ? `<span class="save">Rẻ hơn ${st.pct}%</span>` : ''}
       <button class="btn nv" type="button" id="ccadd">${ic('cart')}Thêm combo vào giỏ</button><div class="cmsg" style="flex-basis:100%" aria-live="polite"></div></div>
@@ -500,6 +513,7 @@ async function openDetail(sec, id) {
         const c = DATA.combos.find(x => x.id === id);
         if (!c || comboStats(c, DATA.novels).items.length < 2) return closeDetail(true);
         backCombo = null; // đã quay lại combo
+        openedKey = ''; // đang ở cửa sổ combo → mở lại truyện (nút Quay lại truyện) phải vẽ lại
         dlg.innerHTML = `<button class="xbtn" id="x" type="button" aria-label="Đóng">${ic('x')}</button><div class="dc">${comboHtml(c)}</div>`;
         dlg.setAttribute('aria-labelledby', 'dt');
         if (!dlg.open) dlg.showModal();
@@ -515,9 +529,9 @@ async function openDetail(sec, id) {
 }
 let openedKey = ''; // đang mở cửa sổ nào (tránh vẽ lại khi dữ liệu đầy đủ về sau khi đã mở nhanh)
 function showItem(sec, item) {
-    const key = sec + ':' + item.id;
+    const key = sec + ':' + item.id + (rendered ? ':full' : '');   // mở nhanh khi dữ liệu chưa tải xong → vẽ lại 1 lần khi đủ dữ liệu (để có ô combo)
     if (dlg.open && openedKey === key) return;
-    openedKey = key;
+    openedKey = key; curItem = { sec, item }; backItem = null;
     dlg.innerHTML = `<button class="xbtn" id="x" type="button" aria-label="Đóng">${ic('x')}</button><div class="dc">${sec === 'sp' ? productHtml(item) : novelHtml(item)}</div>`;
     dlg.setAttribute('aria-labelledby', 'dt');
     if (!dlg.open) dlg.showModal();
@@ -532,10 +546,12 @@ function closeDetail(clearHash) {
     if (clearHash) history.replaceState(null, '', location.pathname + location.search);
 }
 // Đóng bằng nút, phím Esc hoặc bấm ra ngoài → bỏ phần #/sp/<id> khỏi địa chỉ
-dlg.addEventListener('close', () => { backCombo = null; openedKey = ''; if (/^#\/(sp|truyen|phim|combo)\/./.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); });
+dlg.addEventListener('close', () => { backCombo = null; backItem = null; openedKey = ''; if (/^#\/(sp|truyen|phim|combo)\/./.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); });
 dlg.addEventListener('click', e => {
     if (e.target === dlg) dlg.close();
     // Bấm truyện trong cửa sổ combo → nhớ combo đó; bấm truyện từ nơi khác → bỏ nút quay lại
+    const cl = e.target.closest('.cdeal a[href^="#/combo/"]');
+    if (cl && curItem) backItem = { href: `#/${curItem.sec}/${curItem.item.slug || curItem.item.id}`, title: curItem.item.title };
     const t = e.target.closest('a.tile');
     if (t) { const m = location.hash.match(/^#\/combo\/(.+)$/); backCombo = m ? decodeURIComponent(m[1]) : null; }
 });
