@@ -139,3 +139,16 @@ main.wide{max-width:1560px}
 .pvbox{position:relative;flex:1;overflow:hidden;background:#8883}
 .pvbox iframe{position:absolute;top:0;left:0;border:0;background:var(--bg);transform-origin:0 0}
 @media(max-width:1000px){.sitegrid{grid-template-columns:1fr}.pvpane{position:relative;top:0;height:75vh;order:-1}}
+
+/* Đặt giá hàng loạt */
+dialog:has(#bptab){width:min(780px,95vw)}
+.bptool{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:12px;border:1px solid var(--bd);border-radius:10px;margin:10px 0}
+.bptool label{margin:0}.bptool input,.bptool select{width:130px;margin:4px 0 0}
+#bptab{max-height:52vh;overflow:auto;display:grid;gap:10px;padding-right:4px}
+.bp{border:1px solid var(--bd);border-radius:10px;padding:10px 12px}
+.bp.ch{border-color:var(--ac,#d97706);box-shadow:inset 3px 0 0 var(--ac,#d97706)}
+.bp .bph{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.bp .bpg{display:grid;grid-template-columns:1fr 1.4fr;gap:10px;margin-top:6px}
+.bp .bpg label{margin:0;font-size:12.5px}.bp .bpg input{margin-top:3px}
+.bp .bpi{margin-top:6px;font-size:13px}
+@media(max-width:560px){.bp .bpg{grid-template-columns:1fr}}

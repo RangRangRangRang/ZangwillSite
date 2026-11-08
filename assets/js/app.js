@@ -191,9 +191,10 @@ function fanInner() {
     const all = comboList(), n = all.length, k = Math.min(3, n);
     const L = Array.from({ length: k }, (_, i) => all[(fanI + i) % n]);
     const pos = { 1: ['c'], 2: ['l', 'r'], 3: ['l', 'c', 'r'] }[k] || [];
-    const nav = n > 3 ? `<div class="fnav"><button type="button" data-fan="-1" aria-label="Combo trước">‹</button>
+    // Thanh dưới chùm bìa: (từ 4 combo) ‹ chấm › + nút nhỏ "Tất cả" mở danh sách đầy đủ các combo
+    const nav = n ? `<div class="fnavw">${n > 3 ? `<div class="fnav"><button type="button" data-fan="-1" aria-label="Combo trước">‹</button>
       <span class="fdots">${all.map((_, i) => `<button type="button" class="fd" data-fan-to="${i}" aria-label="Combo ${i + 1}" aria-current="${i === fanI}"></button>`).join('')}</span>
-      <button type="button" data-fan="1" aria-label="Combo sau">›</button></div>` : '';
+      <button type="button" data-fan="1" aria-label="Combo sau">›</button></div>` : ''}<button type="button" class="fall" data-fan-all aria-label="Xem tất cả ${n} combo" title="Xem tất cả combo">Tất cả (${n})</button></div>` : '';
     // Bìa thứ 4 mờ ló ra bên phải, báo cho khách biết còn combo khác (bấm vào = sang combo kế)
     const ghost = n > 3 ? comboCard(all[(fanI + 3) % n], 'g').replace('<a class="cb', '<a tabindex="-1" aria-hidden="true" class="cb') : '';
     return ghost + L.map((x, i) => comboCard(x, pos[i])).join('') + nav;
@@ -219,6 +220,37 @@ document.addEventListener('click', e => {
     if (b.dataset.fanTo != null) fanGo(0, +b.dataset.fanTo); else fanGo(+b.dataset.fan);
     fanStart(); // bấm tay thì tính lại nhịp tự trượt
 });
+
+/* ===== Cửa sổ nhỏ "Tất cả combo": danh sách (bìa · tên · số truyện/phim · giá) → bấm một combo để xem bìa và tên từng truyện / phim bên trong ===== */
+const cdlg = document.createElement('dialog');
+cdlg.className = 'cdlg'; cdlg.setAttribute('aria-label', 'Tất cả combo');
+document.body.appendChild(cdlg);
+const comboThumbStyle = c => { const u = c.cover && safe(c.cover) !== '#' ? c.cover : ''; return u ? `background-image:url('${cssUrl(u)}')` : `background:${grad(hueOf(c.author))}`; };
+const cdClose = `<button class="xbtn" type="button" data-cx aria-label="Đóng">${ic('x')}</button>`;
+function comboListView() {
+    const all = comboList();
+    cdlg.innerHTML = `${cdClose}<div class="cdin"><h3 class="h" style="margin-top:0">Tất cả combo (${all.length})</h3><div class="clist">${all.map(({ c, st }) =>
+        `<button type="button" class="crow" data-cpick="${esc(c.id)}"><span class="cth" style="${comboThumbStyle(c)}"></span>
+         <span class="cinfo"><b>${esc(c.author)}</b><small>${st.items.length} ${wordOf(st.items)}</small></span>
+         <span class="cpr">${vnd(st.price)}${st.pct > 0 ? `<em>-${st.pct}%</em>` : ''}</span></button>`).join('')}</div></div>`;
+}
+function comboItemsView(id) {
+    const x = comboList().find(y => y.c.id === id); if (!x) return comboListView();
+    const { c, st } = x;
+    cdlg.innerHTML = `${cdClose}<div class="cdin"><button type="button" class="btn cback" data-cback>‹ Tất cả combo</button>
+      <h3 class="h" style="margin:12px 0 2px">${esc(c.author)}</h3>
+      <div class="meta">${st.items.length} ${wordOf(st.items)} · <b>${vnd(st.price)}</b>${st.pct > 0 ? ` · rẻ hơn ${st.pct}%` : ''}</div>
+      <div class="citems">${st.items.map(n => `<a class="citem" href="#/${L(n).sec}/${esc(n.slug || n.id)}" data-cclose>${cover(n)}<b>${esc(n.title)}</b></a>`).join('')}</div>
+      <a class="btn p cgo" href="#/combo/${esc(c.id)}" data-cclose>Xem và mua combo</a></div>`;
+    cdlg.scrollTop = 0;
+}
+cdlg.addEventListener('click', e => {
+    if (e.target === cdlg || e.target.closest('[data-cx]')) return cdlg.close();       // bấm nền / nút ✕: đóng
+    if (e.target.closest('[data-cclose]')) return cdlg.close();                         // bấm vào truyện / nút mua: đóng rồi để link mở chi tiết
+    const pick = e.target.closest('[data-cpick]'); if (pick) return comboItemsView(pick.dataset.cpick);
+    if (e.target.closest('[data-cback]')) comboListView();
+});
+document.addEventListener('click', e => { if (e.target.closest('[data-fan-all]')) { comboListView(); if (!cdlg.open) cdlg.showModal(); } });
 
 // Ảnh nền cả trang: một lớp cố định sau mọi nội dung; lớp phủ màu nền (--bg) quyết định ảnh hiện rõ hay mờ nhạt
 function applyPageBg(site) {

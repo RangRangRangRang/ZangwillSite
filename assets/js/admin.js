@@ -174,7 +174,7 @@ async function panel() {
     const y = scrollY;
     if (!refresh) $('#app').innerHTML = `${tabsHtml()}
     <div class="top"><h1>${{ products: 'Phần mềm', novels: 'Truyện dịch', movies: 'Phim', combos: 'Combo' }[tab]}</h1>
-    <div class="row" style="margin:0">${isItemTab(tab) ? '<button class="btn" data-act="tpl">⬇ File Excel mẫu</button><button class="btn" data-act="import">📥 Nhập từ Excel</button>' : ''}
+    <div class="row" style="margin:0">${isItemTab(tab) ? '<button class="btn" data-act="bulkprice">💰 Đặt giá hàng loạt</button><button class="btn" data-act="tpl">⬇ File Excel mẫu</button><button class="btn" data-act="import">📥 Nhập từ Excel</button>' : ''}
     <button class="btn p" data-act="add">+ Thêm mới</button></div></div>
     <input type="file" id="xfile" accept=".xlsx,.xls,.csv" hidden>
     <div class="row" style="margin:0 0 14px;align-items:center"><input type="search" id="aq" placeholder="${{ products: 'Tìm theo tên hoặc danh mục…', novels: 'Tìm theo tên truyện hoặc tác giả…', movies: 'Tìm theo tên phim hoặc đạo diễn…', combos: 'Tìm theo tên combo…' }[tab]}" value="${esc(adminQuery)}" aria-label="Tìm trong danh sách" autocomplete="off" style="margin:0;flex:1 1 260px">
@@ -282,6 +282,7 @@ document.addEventListener('click', e => {
         const done = () => say(`Đã copy link: ${url}${item.slug ? '' : ' (chưa có mã ngắn — chạy supabase/update_v10.sql để có link gọn)'}`);
         return (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(done, () => { prompt('Copy link này:', url); });
     }
+    if (b.dataset.act === 'bulkprice') return bulkPricing(curKind());
     if (b.dataset.act === 'tpl') return run(() => downloadTemplate(curKind()));
     if (b.dataset.act === 'import') return $('#xfile').click();
     if (['top', 'up', 'down'].includes(b.dataset.act)) return moveNovel(id, b.dataset.act);
@@ -321,6 +322,75 @@ document.addEventListener('change', e => {
     });
 });
 
+/* ===== Đặt giá hàng loạt: giá mỗi chương chung + giá mua toàn tập cho từng truyện / phim ===== */
+function bulkPricing(kind = 'novel') {
+    const items = (window.__items || []).slice(); // đúng danh sách của tab đang mở (không bị ô tìm kiếm lọc)
+    const U = kind === 'movie' ? 'tập' : 'chương', W = kind === 'movie' ? 'phim' : 'truyện';
+    if (!items.length) return say(`Chưa có ${W} nào.`, true);
+    const origFull = o => o.is_free ? '0' : (o.full_price > 0 ? String(o.full_price) : '');
+    const vndS = v => new Intl.NumberFormat('vi-VN').format(Math.round(v)) + 'đ';
+    $('#frm').innerHTML = `<h2 style="margin:0">Đặt giá hàng loạt · ${W}</h2><div id="fmsg"></div>
+    <div class="bptool"><div><label>Giá mỗi ${U} chung (đ)</label><br><input id="bpAll" type="number" min="0" placeholder="vd: 200"></div>
+      <button class="btn" type="button" id="bpApply">Áp dụng cho tất cả ${W}</button></div>
+    <div class="bptool"><div><label>Giá toàn tập rẻ hơn giá lẻ (%)</label><br><input id="bpPct" type="number" min="0" max="99" value="20"></div>
+      <div><label>Làm tròn</label><br><select id="bpRound"><option value="1000">1.000đ</option><option value="10000">10.000đ</option><option value="1">Không làm tròn</option></select></div>
+      <button class="btn" type="button" id="bpFill">Điền giá toàn tập tự động</button>
+      <div class="meta" style="flex-basis:100%">Chỉ điền cho ${W} đã có số ${U} và giá mỗi ${U}; ghi đè giá toàn tập đang hiện trong bảng, trừ mục đã đặt 0đ (chưa lưu cho tới khi bấm Lưu).</div></div>
+    <div id="bptab">${items.map(o => `<div class="bp" data-id="${esc(o.id)}" data-total="${totalOf(o)}">
+      <div class="bph"><b>${esc(o.title)}</b><span class="meta">${totalOf(o) ? totalOf(o) + ' ' + U : 'chưa có số ' + U}</span></div>
+      <div class="bpg"><label>Giá mỗi ${U} (đ)<input class="bp-p" type="number" min="0" value="${esc(o.price ?? '')}"></label>
+        <label>Giá mua toàn tập (đ) — trống = không bán trọn bộ, 0 = 0đ<input class="bp-f" type="number" min="0" value="${esc(origFull(o))}"></label></div>
+      <div class="bpi meta"></div></div>`).join('')}</div>
+    <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" type="button" id="cancel">Hủy</button><button class="btn p" type="submit">Lưu thay đổi</button></div>`;
+    const byId = id => items.find(o => o.id === id);
+    // Cập nhật dòng thông tin dưới mỗi mục: giá lẻ cả bộ, % rẻ hơn; tô viền mục đã sửa
+    const refresh = row => {
+        const o = byId(row.dataset.id), t = +row.dataset.total, p = +row.querySelector('.bp-p').value || 0, fr = row.querySelector('.bp-f').value.trim(), fp = +fr || 0;
+        const d = fullDeal(p, t, fp);
+        let info = t && p ? `Giá lẻ cả bộ: <b>${vndS(d.retail)}</b> (${t} ${U} × ${vndS(p)})` : `Nhập số ${U} và giá mỗi ${U} để tính giá lẻ cả bộ.`;
+        if (fr === '0') info += ' · Toàn tập: <b>0đ</b>';
+        else if (fp > 0 && d.retail > 0) info += d.pct > 0 ? ` · Toàn tập <b>${vndS(fp)}</b> — rẻ hơn <b>${d.pct}%</b> (tiết kiệm ${vndS(d.retail - fp)})` : ` · Toàn tập ${vndS(fp)} — chưa rẻ hơn giá lẻ`;
+        else if (fp > 0) info += ` · Toàn tập ${vndS(fp)}`;
+        row.querySelector('.bpi').innerHTML = info;
+        row.classList.toggle('ch', p !== (+o.price || 0) || fr !== origFull(o));
+    };
+    const rows = () => [...document.querySelectorAll('#bptab .bp')];
+    rows().forEach(refresh);
+    $('#bptab').oninput = e => { if (e.target.closest('.bp')) refresh(e.target.closest('.bp')); };
+    $('#bpApply').onclick = () => { const v = $('#bpAll').value.trim(); if (v === '' || +v < 0) return say(`Nhập giá mỗi ${U} chung trước (từ 0 trở lên).`, true); rows().forEach(r => { r.querySelector('.bp-p').value = Math.round(+v); refresh(r); }); };
+    $('#bpFill').onclick = () => {
+        const pct = +$('#bpPct').value, step = +$('#bpRound').value || 1; if (!(pct >= 0 && pct < 100)) return say('Phần trăm giảm phải từ 0 đến 99.', true);
+        let n = 0;
+        rows().forEach(r => {
+            const t = +r.dataset.total, p = +r.querySelector('.bp-p').value || 0, retail = t * p; if (!(retail > 0) || r.querySelector('.bp-f').value.trim() === '0') return; // bỏ qua mục đã đặt 0đ
+            let v = Math.round(retail * (100 - pct) / 100 / step) * step; if (v >= retail && pct > 0) v = Math.floor(retail * (100 - pct) / 100); // làm tròn không được vượt giá lẻ
+            r.querySelector('.bp-f').value = Math.max(0, v); refresh(r); n++;
+        });
+        say(`Đã điền giá toàn tập cho ${n} ${W}. Xem lại rồi bấm Lưu thay đổi.`);
+    };
+    $('#cancel').onclick = () => $('#dlg').close();
+    $('#frm').onsubmit = e => {
+        e.preventDefault();
+        const changed = rows().filter(r => r.classList.contains('ch'));
+        if (!changed.length) return say('Chưa có thay đổi nào.', true);
+        run(async () => {
+            let done = 0; const fails = [];
+            for (const r of changed) {
+                const o = byId(r.dataset.id), p = r.querySelector('.bp-p').value.trim(), fr = r.querySelector('.bp-f').value.trim(), free = isFreeIn(fr);
+                say(`Đang lưu ${done + fails.length + 1}/${changed.length}…`);
+                try {
+                    if (p === '' || +p < 0) throw new Error(`giá mỗi ${U} không hợp lệ`);
+                    await saveNovel({ id: o.id, price: Math.round(+p), full_price: free ? 0 : Math.max(0, Math.round(+fr) || 0),
+                        ...((free || 'is_free' in o) ? { is_free: free } : {}) }); // cột is_free cần update_v7.sql
+                    done++;
+                } catch (err) { console.error(err); fails.push(`${o.title}: ${err.message}`); }
+            }
+            $('#dlg').close(); await panel();
+            say(fails.length ? `Đã lưu ${done} ${W}. Lỗi ${fails.length}: ${fails.join(' | ')}` : `Đã cập nhật giá cho ${done} ${W}.`, fails.length > 0);
+        });
+    };
+    $('#dlg').showModal();
+}
 function importPreview(items, kind = 'novel') {
     const W = kind === 'movie' ? 'phim' : 'truyện';
     const ok = items.filter(i => !i.error);
