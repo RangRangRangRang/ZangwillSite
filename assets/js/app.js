@@ -151,7 +151,8 @@ const authorOptions = k => `<option value="">${KIND[k].authorAll}</option>${auth
 // Một mục (kệ) trên trang chủ: tiêu đề + thanh công cụ + lưới.
 function shelfHtml(k) {
     const K = KIND[k], p = PFX[k], s = NS[k], items = itemsOf(k);
-    return `<section class="shelf" id="${K.sec}"><div class="sh"><h2>${K.title}</h2></div>
+    const O = KIND[k === 'novel' ? 'movie' : 'novel'];   // mục còn lại (chỉ có 2 mục: Truyện dịch ⇄ Phim)
+    return `<section class="shelf" id="${K.sec}"><div class="sh"><button class="dnav dback" type="button" data-duo="-1" aria-label="Về ${O.title}">‹ ${O.title}</button><h2>${K.title}</h2><button class="dnav dnext" type="button" data-duo="1" aria-label="Sang ${O.title}">${O.title} ›</button></div>
       ${items.length ? `<div class="ntools" data-k="${k}"><input id="${p}q" type="search" placeholder="Tìm tên ${K.word}, ${K.author.toLowerCase()}…" value="${esc(s.q)}" aria-label="Tìm ${K.word}" autocomplete="off">
        <select id="${p}sort" data-f="sort" aria-label="Sắp xếp ${K.word}">${sortsOf(k).map(([v, l]) => `<option value="${v}" ${s.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
        <select id="${p}author" data-f="author" aria-label="Lọc theo ${K.author.toLowerCase()}">${authorOptions(k)}</select>
@@ -172,6 +173,71 @@ function renderNovels(k) {
     $('#' + p + 'up').setAttribute('aria-pressed', s.dir < 0);
     $('#' + p + 'grid').innerHTML = list.map(n => nCard(n)).join('') || `<div class="empty">Không tìm thấy ${KIND[k].word} nào.</div>`;
 }
+/* ===== Truyện dịch ⇄ Phim: hai mặt của một "trục quay" dọc — Truyện dịch ở mặt trước, Phim ở mặt sau. Bấm ‹ › hoặc vuốt ngang để quay 180° ===== */
+let DEG = 0, duoBusy = false;   // DEG: góc quay hiện tại (bội của 180°); 0 = Truyện dịch, 180 = Phim
+// Hai mặt đặt đối diện nhau quanh một trục dọc cách mặt trước R px: quay là cả hai mặt vòng quanh trục (như cây quay thịt), giữa chừng mặt đang quay hơi "phồng" lên
+const duoR = () => Math.round(Math.min(1180, innerWidth) * 0.36);
+const spinT = deg => `translateZ(${-duoR()}px) rotateY(${deg}deg)`;
+// Lúc quay, mỗi khối (nút, tên mục, ô tìm, từng bìa…) được uốn theo mặt trụ: càng xa tâm càng cong ra sau, nên cả mặt "phồng" lên như thùng quay thật. --k = độ cong (0 = phẳng)
+const DUO_LEAF = '.dnav,.sh h2,.ntools>input,.ntools>select,.ntools .chip,.ngrid .tile,.ngrid .empty';
+function duoMeasure() {
+    document.querySelectorAll('#duo > .dspin > .shelf').forEach(f => {
+        const R = duoR(), cx = f.offsetWidth / 2;
+        f.querySelectorAll(DUO_LEAF).forEach(el => el.style.setProperty('--u', ((el.offsetLeft + el.offsetWidth / 2 - cx) / R).toFixed(4)));
+    });
+}
+function duoBulge() {
+    const spin = document.querySelector('#duo > .dspin'); if (!spin) return;
+    const m = new DOMMatrix(getComputedStyle(spin).transform), th = Math.atan2(m.m13, m.m11);
+    spin.style.setProperty('--k', Math.max(0.001, Math.abs(Math.sin(th))).toFixed(3));
+    if (duoBusy || (sw && sw.drag)) requestAnimationFrame(duoBulge); else spin.style.removeProperty('--k');
+}
+const secAt = deg => (((Math.round(deg / 180) % 2) + 2) % 2) ? 'phim' : 'truyen';
+const reduceMotion = () => matchMedia('(prefers-reduced-motion:reduce)').matches;
+function duoSet(deg) {
+    const d = document.getElementById('duo');
+    if (!d) { DEG = deg; return; }
+    const spin = d.firstElementChild, to = secAt(deg);
+    if (reduceMotion()) { DEG = deg; spin.style.transition = 'none'; spin.style.transform = spinT(deg); d.dataset.cur = to; return; }
+    duoBusy = true;
+    const h0 = spin.offsetHeight;                     // chiều cao mặt đang hiện
+    d.classList.add('turning'); duoMeasure();         // lúc quay: cả hai mặt cùng hiện
+    const h1 = document.getElementById(to).offsetHeight;
+    spin.style.height = h0 + 'px'; void spin.offsetHeight;
+    spin.style.transition = 'transform .9s cubic-bezier(.4,.05,.2,1), height .9s cubic-bezier(.4,.05,.2,1)';
+    spin.style.height = h1 + 'px'; spin.style.transform = spinT(deg); DEG = deg; duoBulge();
+    setTimeout(() => { d.dataset.cur = to; d.classList.remove('turning', 'dragging'); spin.style.height = ''; spin.style.transition = ''; duoBusy = false; }, 940);
+}
+// dir = 1 (sang mục kế): quay sang trái; dir = -1 (về mục trước): quay sang phải. Với 2 mục thì đều tới mục kia.
+const duoGo = dir => { if (!duoBusy) duoSet(DEG - 180 * dir); };
+const duoShow = (sec, dir = 1) => { if (secAt(DEG) !== sec) duoGo(dir); };
+let sw = null, swiped = false;
+document.addEventListener('click', e => {
+    if (swiped) { swiped = false; e.preventDefault(); e.stopPropagation(); return; }
+    const b = e.target.closest('[data-duo]'); if (b) duoGo(+b.dataset.duo);
+}, true);
+document.addEventListener('pointerdown', e => {
+    if (duoBusy || !e.target.closest('#duo') || e.target.closest('input,select,textarea') || (e.pointerType === 'mouse' && e.button)) return;
+    sw = { x: e.clientX, y: e.clientY, drag: false, dd: 0 };
+});
+document.addEventListener('pointermove', e => {
+    if (!sw) return;
+    const d = document.getElementById('duo'), spin = d && d.firstElementChild, dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+    if (!spin) return;
+    if (!sw.drag && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {      // bắt đầu kéo: quay theo ngón tay
+        sw.drag = true; spin.style.height = spin.offsetHeight + 'px'; d.classList.add('turning', 'dragging'); duoMeasure(); spin.style.transition = 'none'; getSelection().removeAllRanges(); requestAnimationFrame(duoBulge);
+    }
+    if (sw.drag) { sw.dd = Math.max(-180, Math.min(180, dx / (d.offsetWidth * 0.6) * 180)); spin.style.transform = spinT(DEG + sw.dd); }
+});
+const duoRelease = () => {
+    const s = sw; sw = null; if (!s || !s.drag) return;
+    swiped = true; setTimeout(() => { swiped = false; }, 80);
+    const d = document.getElementById('duo'); if (!d) return;
+    duoSet(DEG + (Math.abs(s.dd) > 45 ? Math.sign(s.dd) * 180 : 0));                 // đủ xa thì quay hẳn sang mặt kia, chưa đủ thì quay về
+};
+document.addEventListener('pointerup', duoRelease); document.addEventListener('pointercancel', duoRelease);
+addEventListener('resize', () => { const d = document.getElementById('duo'); if (!d || duoBusy) return; d.style.setProperty('--R', duoR() + 'px'); d.firstElementChild.style.transform = spinT(DEG); });
+document.addEventListener('dragstart', e => { if (e.target.closest && e.target.closest('#duo .tile')) e.preventDefault(); });
 const renderShelves = () => { renderNovels('novel'); renderNovels('movie'); };
 
 /* ===== Combo đồng tác giả: banner xếp chéo như bìa sách ở banner đầu trang, bấm vào mở cửa sổ chi tiết ===== */
@@ -277,12 +343,11 @@ function renderPage() {
     const nm = (v, lo, hi, d) => { v = parseFloat(v); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
     const bgVars = `--bgblur:${nm(site.bgblur, 0, 12, 0)}px;--dim:${nm(site.bgdim, 0, 120, 100) / 100};--pop:${nm(site.bgpop, 0, 100, 0) / 100}`;
     $('#page').innerHTML = `<section class="ban ${rendered ? '' : 'view'} ${bg ? 'has-img' : ''}" style="${bgVars}">${bg ? `<div class="ban-bg" style="background-image:url('${cssUrl(bg)}')"></div>` : ''}
-      <div class="ban-in"><div><p class="eyebrow">Xin chào</p><h1>Mình là ${name},<br>làm phần mềm &amp; dịch truyện.</h1><p class="lead">${tagline}</p>
+      <div class="ban-in"><div><p class="eyebrow">Xin chào</p><h1>Mình là ${name}, <br>làm phần mềm &amp; dịch truyện.</h1><p class="lead" id="lead">${tagline}</p>
        <div class="chips"><a href="#/sp"><b>${products.length}</b>phần mềm</a><a href="#/truyen"><b>${novels.length}</b>truyện dịch</a><a href="#/phim"><b>${movies.length}</b>phim</a></div></div>${art}</div></section>
      <div class="wrap ${rendered ? '' : 'view'}">
      <section class="shelf" id="sp" style="margin-top:0"><div class="sh"><h2>Phần mềm</h2><div class="filters" id="filters" role="group" aria-label="Lọc theo danh mục"></div></div><div class="pgrid" id="pgrid"></div></section>
-     ${shelfHtml('novel')}
-     ${shelfHtml('movie')}
+     <div class="duo" id="duo" data-cur="${secAt(DEG)}" style="--R:${duoR()}px"><div class="dspin" style="transform:${spinT(DEG)}">${shelfHtml('novel')}${shelfHtml('movie')}</div></div>
      <footer>${links ? `Liên hệ mua: ${links} · ` : ''}<a href="admin.html">Quản trị</a></footer></div>`;
     applyPageBg(site);
     renderProducts();
@@ -575,13 +640,17 @@ async function route() {
             $('#page').innerHTML = `<div class="wrap"><div class="err"><b>Không tải được dữ liệu.</b><br>${esc(e.message)}<br><small>Kiểm tra lại cấu hình trong assets/js/config.js và kết nối mạng.</small></div></div>`;
             return;
         }
+        if (/^#\/phim/.test(location.hash)) DEG = 180;
         renderPage(); rendered = true;
     }
     const m = location.hash.match(/^#\/(sp|truyen|phim|combo)\/(.+)$/);
     if (m) return openDetail(m[1], decodeURIComponent(m[2]));
     closeDetail(false);
     const s = location.hash.match(/^#\/(sp|truyen|phim)$/);   // liên kết cũ #/sp, #/truyen → cuộn tới mục
-    if (s) document.getElementById(s[1])?.scrollIntoView({ behavior: 'smooth' });
+    if (s) {
+        if (s[1] === 'truyen' || s[1] === 'phim') duoShow(s[1], s[1] === 'phim' ? 1 : -1);
+        setTimeout(() => document.getElementById(s[1])?.scrollIntoView({ behavior: 'smooth' }), 30);
+    }
 }
 if (PREVIEW) {
     addEventListener('message', e => {
